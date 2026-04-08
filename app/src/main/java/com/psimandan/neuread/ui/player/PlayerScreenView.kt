@@ -1,0 +1,363 @@
+package com.psimandan.neuread.ui.player
+
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MaterialTheme.colorScheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.psimandan.neuread.data.model.Book
+import com.psimandan.neuread.data.model.Bookmark
+import com.psimandan.neuread.data.model.NeuReadBook
+import com.psimandan.neuread.ui.components.NiceRoundButton
+import com.psimandan.neuread.ui.player.components.BookmarksSectionView
+import com.psimandan.neuread.ui.player.components.HorizontallyScrolledTextView
+import com.psimandan.neuread.ui.theme.NeuReadTheme
+import com.psimandan.neuread.ui.theme.doubleLargeSpace
+import com.psimandan.neuread.ui.theme.largeSpace
+import com.psimandan.neuread.ui.theme.normalSpace
+import com.psimandan.neuread.ui.theme.smallSpace
+import com.psimandan.neuread.voice.toLocale
+import java.util.Locale
+
+@Preview(showBackground = true)
+@Composable
+fun PlayerScreenPreview() {
+    NeuReadTheme(darkTheme = true) {
+        PlayerScreenContent(
+            selectedBook = NeuReadBook.sampleBooks().first(),
+            uiState = PlayerViewModel.PlayerUIState(
+                bookmarks = listOf(
+                    Bookmark(1, "Test 1 Test 1 Test 1 Test 1 Test 1 Test 1  Test 1"),
+                    Bookmark(2, "Test 2"),
+                    Bookmark(3, "Test 3"),
+                    Bookmark(4, "Test 4"),
+                    Bookmark(5, "Test 5"),
+                    Bookmark(6, "Test 6"),
+                    Bookmark(7, "Test 7"),
+                    Bookmark(8, "Test 8"),
+                    Bookmark(9, "Test 9"),
+                    Bookmark(9, "Test 9"),
+                    Bookmark(9, "Test 9"),
+                    Bookmark(9, "Test 9"),
+                    Bookmark(9, "Test 9")
+                ),
+                isSpeaking = false,
+                progressTime = "00:00",
+                progress = 50f,
+                totalTimeString = "05:00"
+            ),
+            currentFrame = listOf("Test 1", "Test 2", "Test 3"),
+            currentWordIndexInFrame = 1,
+            sliderRange = 0f..1000f,
+            onEvent = {}
+        )
+    }
+}
+
+@Composable
+fun PlayerScreenView(
+    onBackToLibrary: () -> Unit,
+    onSettings: (NeuReadBook) -> Unit,
+    viewModel: PlayerViewModel,
+    onPlayback: (Float) -> Unit
+) {
+
+    LaunchedEffect(Unit) {
+        viewModel.setUpBook()
+    }
+
+    val uiState by viewModel.viewState.collectAsState()
+    val highlightingState = viewModel.highlightingState.collectAsState()
+    val currentFrame = highlightingState.value.currentFrame
+    val currentWordIndexInFrame = highlightingState.value.currentWordIndexInFrame
+    val selectedBook = viewModel.book
+
+    PlayerScreenContent(
+        selectedBook = selectedBook,
+        uiState = uiState,
+        currentFrame = currentFrame,
+        currentWordIndexInFrame = currentWordIndexInFrame,
+        sliderRange = uiState.sliderRange,
+        onEvent = { it.onEvent(viewModel, onSettings, onBackToLibrary, onPlayback) },
+    )
+
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleObserver = remember(lifecycleOwner) {
+        LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    // Handle onAppear event
+                }
+
+                Lifecycle.Event.ON_STOP -> {
+                    // Handle onDisappear event
+                    viewModel.saveBookChanges()
+                }
+
+                else -> {}
+            }
+        }
+    }
+    DisposableEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
+            viewModel.onClose()
+            viewModel.saveBookChanges()
+        }
+    }
+
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun PlayerScreenContent(
+    selectedBook: NeuReadBook?,
+    uiState: PlayerViewModel.PlayerUIState,
+    currentFrame: List<String>,
+    currentWordIndexInFrame: Int,
+    sliderRange: ClosedFloatingPointRange<Float>,
+    onEvent: (PlayerEvent) -> Unit
+) {
+    Box {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { },
+                    actions = {
+                        TextButton(onClick = { onEvent(PlayerEvent.BackToLibrary) }) {
+                            Text(
+                                "Library",
+                                style = MaterialTheme.typography.titleLarge,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.weight(1F))
+                        TextButton(onClick = { onEvent(PlayerEvent.Settings) }) {
+                            Text(
+                                "Settings",
+                                style = MaterialTheme.typography.titleLarge,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                )
+            },
+            content = { padding ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                ) {
+                    if (uiState.bookmarks.isNotEmpty()) {
+                        BookmarksSectionView(uiState, onEvent)
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    HorizontalDivider()
+                }
+            },
+            bottomBar = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    selectedBook?.let {
+                        Spacer(modifier = Modifier.padding(vertical = normalSpace))
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(horizontal = normalSpace)
+                        ) {
+                            Text(
+                                it.title,
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                            Spacer(modifier = Modifier.padding(vertical = smallSpace))
+                            Text(
+                                it.author,
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.headlineSmall
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.padding(
+                                horizontal = doubleLargeSpace,
+                                vertical = largeSpace
+                            )
+                        ) {
+                            Slider(
+                                value = uiState.progress,
+                                valueRange = sliderRange,
+                                onValueChange = { value ->
+                                    onEvent(PlayerEvent.SliderValueChange(value))
+                                },
+                                colors = SliderDefaults.colors(
+                                    thumbColor = colorScheme.primary,
+                                    activeTrackColor = colorScheme.primary
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row {
+                                Text(
+                                    text = uiState.progressTime,
+                                    maxLines = 1,
+                                    color = colorScheme.tertiary,
+                                    fontWeight = FontWeight.Normal
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
+                                Text(
+                                    text = uiState.totalTimeString,
+                                    maxLines = 1,
+                                    color = colorScheme.tertiary,
+                                    fontWeight = FontWeight.Normal
+                                )
+                            }
+                        }
+                    } ?: run {
+                        Column(
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "Loading..", textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                        }
+                    }
+                    HorizontalDivider()
+                    HorizontallyScrolledTextView(
+                        highLight = selectedBook is Book,
+                        words = currentFrame,
+                        index = currentWordIndexInFrame,
+                        language = selectedBook?.language?.toLocale() ?: Locale.getDefault()
+                    )
+                    HorizontalDivider()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(largeSpace),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        NiceRoundButton(
+                            contentDescription = "Fast Rewind",
+                            icon = Icons.Filled.FastRewind,
+                            diameter = 44.dp,
+                            clickHandler = { onEvent(PlayerEvent.FastRewind) }
+                        )
+                        Spacer(modifier = Modifier.width(smallSpace))
+                        NiceRoundButton(
+                            contentDescription = "Play and Pause",
+                            icon = if (uiState.isSpeaking) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            backgroundColor = colorScheme.primary,
+                            diameter = 64.dp,
+                            scale = 2f,
+                            clickHandler = {
+                                if (uiState.isSpeaking)
+                                    onEvent(PlayerEvent.PauseClick)
+                                else
+                                    onEvent(PlayerEvent.PlayClick)
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(smallSpace))
+                        NiceRoundButton(
+                            contentDescription = "Fast Forward",
+                            icon = Icons.Filled.FastForward,
+                            diameter = 44.dp,
+                            clickHandler = { onEvent(PlayerEvent.FastForward) }
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = largeSpace, start = largeSpace),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        NiceRoundButton(
+                            enabled = uiState.isSpeaking,
+                            contentDescription = "Bookmark",
+                            icon = Icons.Filled.BookmarkAdd,
+                            diameter = 44.dp,
+                            clickHandler = { onEvent(PlayerEvent.AddBookmark) }
+                        )
+                        Spacer(modifier = Modifier.width(smallSpace))
+
+                    }
+                }
+            }
+        )
+
+        if (uiState.totalTimeString.isEmpty() || uiState.totalTimeString.endsWith("00:00")) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color(0xcF7f7f7f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(largeSpace)
+                        .background(
+                            color = colorScheme.primary,
+                            shape = RoundedCornerShape(8.dp)
+                        ),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(
+                        color = colorScheme.background,
+                        modifier = Modifier.padding(largeSpace)
+                    )
+                    Text(
+                        "Loading book..",
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = colorScheme.background,
+                        modifier = Modifier.align(Alignment.CenterHorizontally).padding(largeSpace))
+                }
+            }
+        }
+    }
+
+}

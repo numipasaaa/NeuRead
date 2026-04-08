@@ -1,0 +1,56 @@
+package com.psimandan.neuread.ui.settings
+
+import android.speech.tts.Voice
+import com.psimandan.neuread.data.model.NeuReadBook
+import com.psimandan.neuread.voice.languageId
+import com.psimandan.neuread.voice.NeuReadVoice
+import java.util.Locale
+
+sealed class BookSettingsEvent {
+    data class TitleChanged(val title: String) : BookSettingsEvent()
+    data class AuthorChanged(val author: String) : BookSettingsEvent()
+    data object Cancel : BookSettingsEvent()
+    data object Save : BookSettingsEvent()
+    data object DeleteClicked : BookSettingsEvent()
+    data class LanguageSelected(val locale: Locale) : BookSettingsEvent()
+    data class VoiceSelected(val voice: NeuReadVoice) : BookSettingsEvent()
+    data class SpeedSelected(val speed: Float) : BookSettingsEvent()
+    data class PageSelected(val page: Int) : BookSettingsEvent()
+    data class PlayVoiceSample(val language: Locale, val voice: Voice?, val rate: Float) : BookSettingsEvent()
+    data object PlayAudioSample : BookSettingsEvent()
+    data object DismissVoiceErrorDialog : BookSettingsEvent()
+}
+
+fun BookSettingsEvent.onEvent(model: BookSettingsViewModel, onNavigateBack: (NeuReadBook?) -> Unit) {
+//    Timber.d("BookSettingsScreenView.onEvent=>${this}")
+    when (this) {
+        is BookSettingsEvent.TitleChanged -> model.updateBookDetails(title = this.title)
+        is BookSettingsEvent.AuthorChanged -> model.updateBookDetails(author = this.author)
+        BookSettingsEvent.Cancel -> {
+            model.onCancel(onNewBook = {
+                onNavigateBack(null)
+            }, onUpdate = {
+                onNavigateBack(model.bookState.value.book)
+            })
+        }
+
+        BookSettingsEvent.Save -> {
+            model.onSave {
+                onNavigateBack(model.bookState.value.book)
+            }
+        }
+
+        BookSettingsEvent.DeleteClicked -> model.onShowDelete(true)
+        is BookSettingsEvent.LanguageSelected -> model.updateBookDetails(language = this.locale.languageId())
+        is BookSettingsEvent.VoiceSelected -> model.updateBookDetails(voiceIdentifier = this.voice.name)
+        is BookSettingsEvent.SpeedSelected -> model.updateBookDetails(voiceRate = this.speed)
+        is BookSettingsEvent.PageSelected -> model.onPageSelected(this.page)
+        is BookSettingsEvent.PlayVoiceSample -> {
+                model.payTextSample(this.language, this.voice, this.rate)
+        }
+        is BookSettingsEvent.PlayAudioSample -> {
+             model.payAudioSample()
+        }
+        is BookSettingsEvent.DismissVoiceErrorDialog -> model.dismissVoiceError()
+    }
+}

@@ -1,0 +1,61 @@
+package com.psimandan.neuread.data.datasource
+
+import android.content.Context
+import android.speech.tts.TextToSpeech
+import android.speech.tts.Voice
+import com.psimandan.neuread.voice.NeuReadVoice
+import com.psimandan.neuread.voice.toNeuReadVoice
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import java.util.Locale
+import javax.inject.Inject
+import kotlin.coroutines.resume
+
+class VoiceDataSource @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
+
+    private var textToSpeech: TextToSpeech? = null
+    private var availableVoices: Set<Voice> = setOf()
+    private var availableLocales: Set<Locale> = setOf()
+
+    suspend fun loadVoices(): Set<NeuReadVoice> = withContext(Dispatchers.IO) {
+        return@withContext suspendCancellableCoroutine { continuation ->
+            textToSpeech = TextToSpeech(context) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    textToSpeech?.let { tts ->
+//                        availableVoices = tts.voices.filter { voice ->
+//                            !voice.features.contains("notInstalled") //&& voice.name.endsWith("-language")
+//                        }.toSet()
+                        availableVoices = tts.voices.toSet()
+//                        availableVoices.forEach { voice ->
+//                            Timber.d("availableVoices ---------------->")
+//                            Timber.d("availableVoices ->${voice.name} of ${voice.locale.country}/${voice.locale.displayName}")
+//                            voice.features.forEach { f ->
+//                                Timber.d("features ->$f")
+//                            }
+//
+//                        }
+                        availableLocales = availableVoices.map { voice ->
+                            voice.locale
+                        }.toSet()
+                    }
+                }
+                textToSpeech?.shutdown()
+                textToSpeech = null
+                continuation.resume(availableVoices.map { it.toNeuReadVoice() }.toSet())
+            }
+            // Ensure TTS is shut down if the coroutine is cancelled before the engine initialises
+            continuation.invokeOnCancellation {
+                textToSpeech?.shutdown()
+                textToSpeech = null
+            }
+        }
+    }
+
+    fun getAvailableLocales(): Set<Locale> {
+        return availableLocales
+    }
+}
