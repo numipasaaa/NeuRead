@@ -288,19 +288,31 @@ fun PlayerScreenContent(
                             clickHandler = { onEvent(PlayerEvent.FastRewind) }
                         )
                         Spacer(modifier = Modifier.width(smallSpace))
-                        NiceRoundButton(
-                            contentDescription = "Play and Pause",
-                            icon = if (uiState.isSpeaking) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            backgroundColor = colorScheme.primary,
-                            diameter = 64.dp,
-                            scale = 2f,
-                            clickHandler = {
-                                if (uiState.isSpeaking)
-                                    onEvent(PlayerEvent.PauseClick)
-                                else
-                                    onEvent(PlayerEvent.PlayClick)
+
+                        Box(contentAlignment = Alignment.Center) {
+                            NiceRoundButton(
+                                contentDescription = "Play and Pause",
+                                icon = if (uiState.isSpeaking) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                backgroundColor = colorScheme.primary,
+                                diameter = 64.dp,
+                                scale = 2f,
+                                clickHandler = {
+                                    if (uiState.isSpeaking)
+                                        onEvent(PlayerEvent.PauseClick)
+                                    else
+                                        onEvent(PlayerEvent.PlayClick)
+                                }
+                            )
+
+                            if (uiState.isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.width(64.dp),
+                                    color = colorScheme.onPrimary.copy(alpha = 0.5f),
+                                    strokeWidth = 4.dp
+                                )
                             }
-                        )
+                        }
+
                         Spacer(modifier = Modifier.width(smallSpace))
                         NiceRoundButton(
                             contentDescription = "Fast Forward",

@@ -117,6 +117,7 @@ class PlayerViewModel @Inject constructor(
     data class PlayerUIState(
         val totalTime: Double = 0.0,
         val isSpeaking: Boolean = false,
+        val isLoading: Boolean = false,
         val progress: Float = 0f,
         val progressTime: String = "00:00",
         val totalTimeString: String = "00:00",

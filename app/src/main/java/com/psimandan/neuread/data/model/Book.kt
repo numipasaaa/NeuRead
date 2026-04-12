@@ -52,7 +52,6 @@ data class Book(
                 )
                 completion()
             }
-            coroutineScope.cancel()
         }
     }
 

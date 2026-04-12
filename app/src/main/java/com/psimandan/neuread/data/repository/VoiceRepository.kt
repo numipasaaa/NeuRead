@@ -14,12 +14,29 @@ class VoiceRepository @Inject constructor(
     private var availableVoices: Set<NeuReadVoice> = setOf()
 
     suspend fun fetchAvailableVoices(): Set<NeuReadVoice> {
-        availableVoices = voiceDataSource.loadVoices()
+        // 1. Fetch the normal offline/native voices from the device
+        val nativeVoices = voiceDataSource.loadVoices()
+
+        // 2. Create our custom Network Voice for the Python API
+        // Note: Change Locale("ro") to Locale("en", "US") if you reverted to the English model
+        val neuTtsVoice = Voice(
+            "NeuTTS (High Quality AI)", // The name that will appear in your UI
+            Locale("en"),               // The language category it belongs to
+            400,                        // Quality indicator (High)
+            200,                        // Latency indicator (Network)
+            true,                       // requiresNetwork = true
+            null                        // features
+        ).toNeuReadVoice()
+
+        // 3. Combine them and save to state
+        availableVoices = nativeVoices + neuTtsVoice
         return availableVoices
     }
 
     fun getAvailableLocales(): Set<Locale> {
-        return voiceDataSource.getAvailableLocales()
+        // Update this to read from our combined list rather than just the native data source,
+        // ensuring the language tab in the UI shows up even if NeuTTS is the ONLY voice for that language.
+        return availableVoices.map { it.locale }.toSet()
     }
 
     fun nameToVoice(name: String, language: String): NeuReadVoice {

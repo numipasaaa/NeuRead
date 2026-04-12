@@ -14,10 +14,18 @@ import com.psimandan.neuread.data.model.NeuReadBook
 import com.psimandan.neuread.ui.player.PlayerViewModel.HighlightingUIState
 import com.psimandan.neuread.ui.player.PlayerViewModel.PlayerUIState
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.*
 import kotlin.math.max
 import kotlin.math.min
+
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.Collections
 
 fun String.cleanedForTTS(): String {
     return this.replace(",,", ",").replace("..", ".").filter { char ->
@@ -58,7 +66,10 @@ class SpeechBookPlayer(
     }
 
     private var textToSpeech: TextToSpeech? = null
+    private var neuTtsApiClient: NeuTTSApiClient? = null
 
+    private val playerScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main)
+    private var audioTrack: AudioTrack? = null
     private var words = listOf<String>()
     private var selectedSpeechRate: Float = 1f
     private var currentWordIndex = 0
@@ -75,11 +86,58 @@ class SpeechBookPlayer(
             Timber.e("Invalid book type")
             return
         }
-        val selectedLanguage = Locale(book.language)
+
+        // Route the initialization based on the selected voice
+        if (voice.name.contains("NeuTTS", ignoreCase = true)) {
+            initializeNeuTts(book)
+        } else {
+            initializeNativeTts(book, Locale(book.language))
+        }
+    }
+
+    private fun initializeNeuTts(book: Book) {
+        // INITIALIZE CLIENT-SERVER IMPLEMENTATION
+        neuTtsApiClient = NeuTTSApiClient(context)
+
+        playerScope.launch {
+            try {
+                // Setup the UI state
+                words = book.text.flatMap { it.cleanedForTTS().split("\\s+".toRegex()) }
+                    .mapNotNull { it.takeIf { it.isNotEmpty() } }
+                totalWords = words.size
+                currentWordIndex = book.lastPosition
+                selectedSpeechRate = book.voiceRate
+
+                val hState = speakingCallback.highlightingState.value
+                speakingCallback.onUpdateHighlightingUI(hState.copy(currentWordIndexInFrame = 0))
+
+                book.lazyCalculate {
+                    val viewState = book.viewState.value
+                    speakingCallback.onReady(
+                        uiState = PlayerUIState(
+                            progress = book.lastPosition.toFloat(),
+                            totalTimeString = viewState.totalTime,
+                            progressTime = viewState.progressTime,
+                            sliderRange = 0f..viewState.totalTimeSeconds.toFloat(),
+                            totalTime = viewState.totalTimeSeconds.toDouble(),
+                            bookmarks = book.bookmarks.map {
+                                it.title = titleForBookmark(it.position); it
+                            }
+                        )
+                    )
+                }
+                Timber.d("NeuTTS Client-Server Ready!")
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to initialize NeuTTS Client")
+                speakingCallback.onStop()
+            }
+        }
+    }
+
+    private fun initializeNativeTts(book: Book, selectedLanguage: Locale) {
         textToSpeech = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val player = textToSpeech!!
-
 
                 words = book.text.flatMap { it.cleanedForTTS().split("\\s+".toRegex()) }
                     .mapNotNull { it.takeIf { it.isNotEmpty() } }
@@ -92,10 +150,12 @@ class SpeechBookPlayer(
                 player.voice = voice
                 player.setSpeechRate(book.voiceRate)
                 player.setOnUtteranceProgressListener(ttsListener)
+
                 val hState = speakingCallback.highlightingState.value
                 speakingCallback.onUpdateHighlightingUI(
                     hState.copy(currentWordIndexInFrame = 0)
                 )
+
                 book.lazyCalculate {
                     speakingCallback.onReady(
                         uiState = PlayerUIState(
@@ -181,10 +241,11 @@ class SpeechBookPlayer(
     }
 
     fun onNextWord() {
+        Timber.d("onNextWord: index=$currentWordIndex, total=$totalWords")
         if (currentWordIndex < totalWords - 1) {
-//            currentWordIndex++
             playNextFrame()
         } else {
+            Timber.d("Reached end of book")
             speakingCallback.onUpdateUI(
                 speakingCallback.viewState.value.copy(
                     isSpeaking = false
@@ -193,12 +254,38 @@ class SpeechBookPlayer(
         }
     }
 
-    fun speak(text: String) {
-        val utteranceId = "my_utterance_id"
-        val params = Bundle().apply {
-            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
+    fun speak(text: String, frameSize: Int = 0, frame: List<String> = emptyList()) {
+        if (voice.name.contains("NeuTTS", ignoreCase = true)) {
+            // Route to Server API
+            playerScope.launch {
+                // Show loading indicator
+                speakingCallback.onUpdateUI(
+                    speakingCallback.viewState.value.copy(isLoading = true)
+                )
+
+                // Synthesize on server
+                val audioFile = neuTtsApiClient?.synthesizeSpeech(text)
+
+                // Hide loading indicator
+                speakingCallback.onUpdateUI(
+                    speakingCallback.viewState.value.copy(isLoading = false, isSpeaking = true)
+                )
+
+                if (audioFile != null && isPlaying) {
+                    playWavFile(audioFile, frameSize, frame)
+                } else {
+                    if (audioFile == null) Timber.e("Synthesis failed (audioFile is null)")
+                    speakingCallback.onStop()
+                }
+            }
+        } else {
+            // Route to standard Android TTS
+            val utteranceId = "my_utterance_id"
+            val params = Bundle().apply {
+                putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
+            }
+            textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
         }
-        textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
     }
 
     private fun calculateElapsedTime(progress: Int): Double {
@@ -216,21 +303,25 @@ class SpeechBookPlayer(
     }
 
     private fun playNextFrame() {
-        if (words.isEmpty() || currentWordIndex >= words.size) return
-        val toIndex = minOf(currentWordIndex + FRAME_SIZE, totalWords - 1)
+        if (words.isEmpty() || currentWordIndex >= words.size) {
+            Timber.d("playNextFrame: No more words or empty list")
+            return
+        }
+        val toIndex = minOf(currentWordIndex + FRAME_SIZE, totalWords)
         val hState = speakingCallback.highlightingState.value
 
-        Timber.d("currentWordIndex: $currentWordIndex, toIndex: $toIndex")
         val frame = words.subList(currentWordIndex, toIndex)
-        Timber.d("frame: $frame")
-        tmp_start = toIndex
+        val frameSize = frame.size
+        Timber.d("playNextFrame: index=$currentWordIndex, toIndex=$toIndex, frameSize=$frameSize")
+
+        // Update highlighting UI with the new frame immediately
         speakingCallback.onUpdateHighlightingUI(
             hState.copy(
                 currentWordIndexInFrame = 0,
                 currentFrame = frame
             )
         )
-        speak(frame.joinToString(" "))
+        speak(frame.joinToString(" "), frameSize, frame)
     }
 
     override fun onDeleteBookmark(bookmark: Bookmark) {
@@ -287,12 +378,80 @@ class SpeechBookPlayer(
         isPlaying = false
         speakingCallback.onStop()
         textToSpeech?.stop()
+        mediaPlayer?.stop()
+        mediaPlayer?.reset()
+        try {
+            audioTrack?.stop()
+            audioTrack?.flush()
+        } catch (e: Exception) {
+            Timber.e(e, "Error stopping audio track")
+        }
+    }
+
+    private var mediaPlayer: android.media.MediaPlayer? = null
+
+    private suspend fun playWavFile(file: java.io.File, wordsInFrame: Int, frame: List<String>) {
+        withContext(Dispatchers.Main) {
+            val startIndexOfFrame = currentWordIndex
+            mediaPlayer?.release()
+            val mp = android.media.MediaPlayer()
+            mediaPlayer = mp
+            
+            mp.setDataSource(file.absolutePath)
+            mp.setOnCompletionListener {
+                Timber.d("MediaPlayer: playback completed for frame starting at $startIndexOfFrame")
+                if (isPlaying) {
+                    // Advance index only AFTER successful playback
+                    currentWordIndex = startIndexOfFrame + wordsInFrame
+                    onNextWord()
+                }
+            }
+            mp.setOnErrorListener { _, what, extra ->
+                Timber.e("MediaPlayer error: what=$what, extra=$extra")
+                if (isPlaying) {
+                    // Skip this frame on error to keep moving
+                    currentWordIndex = startIndexOfFrame + wordsInFrame
+                    onNextWord()
+                }
+                true
+            }
+            mp.prepare()
+
+            // Synchronize UI with the START of the current audio frame
+            val book = (speakingCallback.book as? Book) ?: return@withContext
+            val secondsElapsed = calculateElapsedTime(startIndexOfFrame)
+
+            speakingCallback.onProgressUpdate(
+                updatedBook = book.copy(
+                    lastPosition = startIndexOfFrame,
+                    updated = System.currentTimeMillis()
+                ),
+                pUIState = speakingCallback.viewState.value.copy(
+                    progress = startIndexOfFrame.toFloat(),
+                    progressTime = secondsElapsed.formatSecondsToHMS(),
+                    isSpeaking = true,
+                    isLoading = false
+                ),
+                hUIState = speakingCallback.highlightingState.value.copy(
+                    currentFrame = frame,
+                    currentWordIndexInFrame = 0
+                )
+            )
+            
+            mp.start()
+        }
     }
 
     override fun onClose() {
         onStopSpeaking()
         textToSpeech?.shutdown()
         textToSpeech = null
+
+        mediaPlayer?.release()
+        mediaPlayer = null
+
+        audioTrack?.release()
+        audioTrack = null
     }
 
     override fun onFastForward() {
@@ -328,4 +487,9 @@ class SpeechBookPlayer(
         if (isSpeaking()) return
         onPlay(source = 5)
     }
+
+    /**
+     * Reverted to Client-Server implementation. 
+     * Offline methods (decodeTokensToAudio, playAudioWaveform) removed.
+     */
 }

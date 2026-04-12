@@ -61,6 +61,7 @@ class AudioBookPlayer(
                                     speakingCallback.onReady(uiState = PlayerViewModel.PlayerUIState(
                                         progress = (book.lastPosition / book.voiceRate),
                                         totalTimeString = book.viewState.value.totalTime,
+                                        isLoading = false,
                                         progressTime = book.viewState.value.progressTime,
                                         sliderRange = 0f..book.viewState.value.totalTimeSeconds.toFloat(),
                                         totalTime = book.viewState.value.totalTimeSeconds.toDouble(),

@@ -45,6 +45,13 @@ android {
         compose = true
         buildConfig = true
     }
+
+    externalNativeBuild {
+        cmake {
+            path("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 }
 
 dependencies {
@@ -107,5 +114,8 @@ dependencies {
     implementation(libs.jsoup)
 
     implementation(libs.androidx.core.splashscreen)
+
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation(libs.onnxruntime.android)
 }
 
