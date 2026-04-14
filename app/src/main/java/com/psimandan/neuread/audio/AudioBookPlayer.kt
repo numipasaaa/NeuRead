@@ -8,6 +8,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.psimandan.extensions.formatSecondsToHMS
+import com.psimandan.neuread.PlaybackSource
 import com.psimandan.neuread.BookPlayer
 import com.psimandan.neuread.data.model.AudioBook
 import com.psimandan.neuread.data.model.Bookmark
@@ -67,7 +68,8 @@ class AudioBookPlayer(
                                         totalTime = book.viewState.value.totalTimeSeconds.toDouble(),
                                         bookmarks = book.bookmarks.map {
                                             it.title = titleForAudioBookmark(book, it.position); it
-                                        }
+                                        },
+                                        chapters = book.chapters
                                     ))
                                 }
                             } else {
@@ -108,7 +110,7 @@ class AudioBookPlayer(
                                 )
                                 if (playOnReady) {
                                     playOnReady = false
-                                    onPlay(source = 2)
+                                    onPlay(source = PlaybackSource.AUTO_PLAY)
                                 }
                             }
                         }
@@ -126,7 +128,11 @@ class AudioBookPlayer(
         }
     }
 
-    override fun onPlay(source: Int) {
+    override fun onJumpToChapter(position: Int) {
+        onUserChangePosition(position.toFloat())
+    }
+
+    override fun onPlay(source: PlaybackSource) {
 
         mediaPlayer?.apply {
                 play()

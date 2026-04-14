@@ -26,18 +26,27 @@ import com.psimandan.neuread.ui.player.PlayerScreenView
 import com.psimandan.neuread.ui.player.PlayerViewModel
 import com.psimandan.neuread.ui.settings.BookSettingsScreenView
 import com.psimandan.neuread.ui.settings.BookSettingsViewModel
+import com.psimandan.neuread.ui.settings.SettingsScreenView
 import com.psimandan.neuread.ui.theme.NeuReadTheme
+import com.psimandan.neuread.ui.voicecloning.VoiceCloningRecordingScreenView
+import com.psimandan.neuread.ui.voicecloning.VoiceCloningScreenView
 import com.psimandan.neuread.voice.VoiceSelectorViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.filterNotNull
 import androidx.core.net.toUri
+import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 
 
 sealed class Screen(val route: String) {
     data object Splash : Screen("init")
     data object Home : Screen("home")
-    data object BookSettings : Screen("settings")
+    data object BookSettings : Screen("book_settings")
+    data object Settings : Screen("settings")
     data object About : Screen("about")
+    data object VoiceCloning : Screen("voice_cloning")
+    data object VoiceCloningRecording : Screen("voice_cloning_recording")
     data object Player : Screen("player")
 }
 
@@ -48,6 +57,7 @@ class MainActivity : ComponentActivity() {
     private val playerViewModel by viewModels<PlayerViewModel>()
     private val bookSettingsViewModel by viewModels<BookSettingsViewModel>()
     private val voiceSelectorViewModel by viewModels<VoiceSelectorViewModel>()
+    private val voiceCloningViewModel by viewModels<com.psimandan.neuread.ui.voicecloning.VoiceCloningViewModel>()
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,13 +100,20 @@ class MainActivity : ComponentActivity() {
                                 libraryViewModel.onSelectBook(book)
                                 navigationViewModel.navigateTo(Screen.Player)
                             },
-                            onAboutClicked = {
-                                navigationViewModel.navigateTo(Screen.About)
+                            onSettingsClicked = {
+                                navigationViewModel.navigateTo(Screen.Settings)
                             },
                             onFileSelected = {
                                 bookSettingsViewModel.createANewBook(it)
                                 navigationViewModel.navigateTo(Screen.BookSettings)
                             }
+                        )
+                    }
+                    composable(Screen.Settings.route) {
+                        SettingsScreenView(
+                            onNavigateBack = { navigationViewModel.popBack() },
+                            onAboutClicked = { navigationViewModel.navigateTo(Screen.About) },
+                            onVoiceCloningClicked = { navigationViewModel.navigateTo(Screen.VoiceCloning) }
                         )
                     }
                     composable(Screen.BookSettings.route) {
@@ -124,6 +141,19 @@ class MainActivity : ComponentActivity() {
                         AboutScreen {
                             navigationViewModel.popBack()
                         }
+                    }
+                    composable(Screen.VoiceCloning.route) {
+                        VoiceCloningScreenView(
+                            viewModel = voiceSelectorViewModel,
+                            onNavigateBack = { navigationViewModel.popBack() },
+                            onAddVoiceClicked = { navigationViewModel.navigateTo(Screen.VoiceCloningRecording) }
+                        )
+                    }
+                    composable(Screen.VoiceCloningRecording.route) {
+                        VoiceCloningRecordingScreenView(
+                            viewModel = voiceCloningViewModel,
+                            onNavigateBack = { navigationViewModel.popBack() }
+                        )
                     }
                     composable(Screen.Player.route) {
                         PlayerScreenView(

@@ -19,6 +19,7 @@ sealed class BookSettingsEvent {
     data class PlayVoiceSample(val language: Locale, val voice: Voice?, val rate: Float) : BookSettingsEvent()
     data object PlayAudioSample : BookSettingsEvent()
     data object DismissVoiceErrorDialog : BookSettingsEvent()
+    data object DownloadAudio : BookSettingsEvent()
 }
 
 fun BookSettingsEvent.onEvent(model: BookSettingsViewModel, onNavigateBack: (NeuReadBook?) -> Unit) {
@@ -52,5 +53,6 @@ fun BookSettingsEvent.onEvent(model: BookSettingsViewModel, onNavigateBack: (Neu
              model.payAudioSample()
         }
         is BookSettingsEvent.DismissVoiceErrorDialog -> model.dismissVoiceError()
+        BookSettingsEvent.DownloadAudio -> model.downloadAudio()
     }
 }

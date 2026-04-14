@@ -52,12 +52,6 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideApplication(@ApplicationContext context: Context): Application {
-        return context as Application
-    }
-
-    @Provides
-    @Singleton
     fun provideEBookDataSource(@ApplicationContext context: Context): EBookDataSource {
         return EBookDataSource(context)
     }
@@ -77,8 +71,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideVoiceRepository(voiceDataSource: VoiceDataSource): VoiceRepository {
-        return VoiceRepository(voiceDataSource)
+    fun provideVoiceRepository(voiceDataSource: VoiceDataSource, prefsStore: PrefsStore): VoiceRepository {
+        return VoiceRepository(voiceDataSource, prefsStore)
     }
 
     @Singleton

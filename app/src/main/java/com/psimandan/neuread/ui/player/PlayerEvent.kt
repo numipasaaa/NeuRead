@@ -1,6 +1,7 @@
 package com.psimandan.neuread.ui.player
 
 import com.psimandan.neuread.data.model.Bookmark
+import com.psimandan.neuread.data.model.Chapter
 import com.psimandan.neuread.data.model.NeuReadBook
 
 sealed class PlayerEvent {
@@ -14,6 +15,7 @@ sealed class PlayerEvent {
     data class BookmarkClick(val position: Float) : PlayerEvent()
     data class DeleteBookmark(val bookmark: Bookmark) : PlayerEvent()
     data class SliderValueChange(val value: Float) : PlayerEvent()
+    data class ChapterClick(val chapter: Chapter) : PlayerEvent()
 }
 
 fun PlayerEvent.onEvent(
@@ -39,5 +41,6 @@ fun PlayerEvent.onEvent(
         is PlayerEvent.BookmarkClick -> model.playFromBookmark(this.position.toInt())
         is PlayerEvent.DeleteBookmark -> model.deleteBookmark(this.bookmark)
         is PlayerEvent.SliderValueChange -> model.onSliderValueChange(this.value)
+        is PlayerEvent.ChapterClick -> model.jumpToChapter(this.chapter)
     }
 }

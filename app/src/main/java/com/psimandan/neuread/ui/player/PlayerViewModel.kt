@@ -10,6 +10,7 @@ import com.psimandan.neuread.audio.AudioBookPlayer
 import com.psimandan.neuread.data.model.AudioBook
 import com.psimandan.neuread.data.model.Book
 import com.psimandan.neuread.data.model.Bookmark
+import com.psimandan.neuread.data.model.Chapter
 import com.psimandan.neuread.data.model.NeuReadBook
 import com.psimandan.neuread.data.repository.LibraryRepository
 import com.psimandan.neuread.data.repository.PlayerStateRepository
@@ -17,6 +18,7 @@ import com.psimandan.neuread.data.repository.VoiceRepository
 import com.psimandan.neuread.domain.usecase.BookmarkUseCase
 import com.psimandan.neuread.domain.usecase.PlayerUseCase
 import com.psimandan.neuread.services.PlayerService
+import com.psimandan.neuread.data.datasource.PrefsStore
 import com.psimandan.neuread.voice.SpeakingCallBack
 import com.psimandan.neuread.voice.SpeechBookPlayer
 import com.psimandan.neuread.voice.toVoice
@@ -100,7 +102,8 @@ class PlayerViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val playerUseCase: PlayerUseCase,
     private val bookmarkUseCase: BookmarkUseCase,
-    private val playerStateRepository: PlayerStateRepository
+    private val playerStateRepository: PlayerStateRepository,
+    private val prefsStore: PrefsStore
 ) : ViewModel(), SpeakingCallBack {
 
     override var book: NeuReadBook? = null
@@ -122,7 +125,8 @@ class PlayerViewModel @Inject constructor(
         val progressTime: String = "00:00",
         val totalTimeString: String = "00:00",
         val bookmarks: List<Bookmark> = emptyList(),
-        val sliderRange: ClosedFloatingPointRange<Float> = 0f..0f
+        val sliderRange: ClosedFloatingPointRange<Float> = 0f..0f,
+        val chapters: List<Chapter> = emptyList()
     )
 
     data class HighlightingUIState(
@@ -157,6 +161,9 @@ class PlayerViewModel @Inject constructor(
                 libraryRepository.getSelectedBook()
             }
             book?.let { book ->
+                // Ensure voices are loaded in repository
+                repository.fetchAvailableVoices()
+
                 player = when (book) {
                     is Book -> {
                         val voice =
@@ -164,7 +171,8 @@ class PlayerViewModel @Inject constructor(
                         SpeechBookPlayer(
                             application,
                             voice = voice.toVoice(),
-                            speakingCallback = this@PlayerViewModel
+                            speakingCallback = this@PlayerViewModel,
+                            prefsStore = prefsStore
                         )
                     }
 
@@ -183,9 +191,21 @@ class PlayerViewModel @Inject constructor(
                 // Update repository state
                 playerStateRepository.setCurrentBook(book)
 
+                _state.value = _state.value.copy(
+                    chapters = when (book) {
+                        is Book -> book.chapters
+                        is AudioBook -> book.chapters
+                    }
+                )
+
                 startPlaybackService()
             }
         }
+    }
+
+
+    fun jumpToChapter(chapter: Chapter) {
+        player?.onJumpToChapter(chapter.startIndex)
     }
 
 
@@ -256,7 +276,9 @@ class PlayerViewModel @Inject constructor(
 
     override fun onReady(uiState: PlayerUIState) {
         viewModelScope.launch {
-            _state.value = uiState
+            _state.value = uiState.copy(
+                chapters = book?.chapters ?: emptyList()
+            )
         }
     }
 

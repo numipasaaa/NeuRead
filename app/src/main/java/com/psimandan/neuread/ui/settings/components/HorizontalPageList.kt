@@ -5,8 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,10 +43,10 @@ fun HorizontalPageListView(
         items(totalPages) { pageIndex ->
             Box(
                 modifier = Modifier
-                    .size(44.dp)
                     .background(
-                        color = if (currentPage == pageIndex) Color.Black else Color.Gray,
-                        shape = CircleShape.copy(all = CornerSize(1.dp))
+                        color = if (currentPage == pageIndex) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(8.dp)
                     )
                     .clickable {
                         currentPage = pageIndex
@@ -56,8 +56,9 @@ fun HorizontalPageListView(
             ) {
                 Text(
                     text = "${pageIndex + 1}",
-                    fontSize = 16.sp,
-                    color = Color.White
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = if (currentPage == pageIndex) MaterialTheme.colorScheme.surface else Color.Black,
+                    modifier = Modifier.padding(8.dp)
                 )
             }
         }

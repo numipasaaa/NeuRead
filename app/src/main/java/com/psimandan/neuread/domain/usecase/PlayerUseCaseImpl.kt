@@ -1,6 +1,7 @@
 package com.psimandan.neuread.domain.usecase
 
 import com.psimandan.neuread.BookPlayer
+import com.psimandan.neuread.PlaybackSource
 import com.psimandan.neuread.data.repository.LibraryRepository
 import com.psimandan.neuread.data.repository.PlaybackState
 import com.psimandan.neuread.data.repository.PlayerStateRepository
@@ -18,7 +19,7 @@ class PlayerUseCaseImpl @Inject constructor(
     private var bookPlayer: BookPlayer? = null
     
     override suspend fun play() {
-        bookPlayer?.onPlay(source = 1)
+        bookPlayer?.onPlay(source = PlaybackSource.USER_ACTION)
         playerStateRepository.updatePlaybackState(
             playerStateRepository.getPlaybackState().first().copy(isPlaying = true)
         )

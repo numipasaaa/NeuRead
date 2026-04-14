@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import com.psimandan.neuread.data.model.EBookFile
 import com.psimandan.neuread.data.model.TextPart
+import com.psimandan.neuread.data.model.Chapter
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
@@ -90,6 +91,17 @@ class EBookDataSource @Inject constructor(
                 }
             }
 
+            val chaptersArray = parsedBook.optJSONArray("chapters")
+            val chapters = mutableListOf<Chapter>()
+            chaptersArray?.let {
+                for (i in 0 until it.length()) {
+                    val item = it.getJSONObject(i)
+                    val cTitle = item.optString("title", "Chapter ${i + 1}")
+                    val startTimeMs = item.optInt("start_time_ms", 0)
+                    chapters.add(Chapter(cTitle, startTimeMs / 1000))
+                }
+            }
+
             val audioDestination = File(rootDirectory, "audio/$fileNameWithoutExtension/")
             if (!audioDestination.exists()) {
                 audioDestination.mkdirs()
@@ -109,6 +121,7 @@ class EBookDataSource @Inject constructor(
                 title = title,
                 author = author,
                 content = emptyList(),
+                chapters = chapters,
                 audioPath = finalAudioPath.absolutePath,
                 text = textParts,
                 language = language,
@@ -167,8 +180,9 @@ class EBookDataSource @Inject constructor(
                     title,
                     author,
                     text,
+                    emptyList(),
                     audioPath = "",
-                    emptyList<TextPart>(),
+                    text = emptyList<TextPart>(),
                     language = "",
                     rate = 1.0f,
                     voice = "",
@@ -182,6 +196,15 @@ class EBookDataSource @Inject constructor(
         }
     }
 
+    private fun getAllTOCReferences(tocReferences: List<nl.siegmann.epublib.domain.TOCReference>): List<nl.siegmann.epublib.domain.TOCReference> {
+        val result = mutableListOf<nl.siegmann.epublib.domain.TOCReference>()
+        for (ref in tocReferences) {
+            result.add(ref)
+            result.addAll(getAllTOCReferences(ref.children))
+        }
+        return result
+    }
+
     private suspend fun extractEpubText(input: InputStream?): EBookFile? = withContext(Dispatchers.IO) {
         input ?: return@withContext null
         return@withContext try {
@@ -189,29 +212,48 @@ class EBookDataSource @Inject constructor(
             val title = book.metadata.titles.firstOrNull() ?: "Unknown Title"
             val author = book.metadata.authors.firstOrNull()?.toString() ?: "Unknown Author"
 
-            val text = book.spine.spineReferences.mapNotNull { spineRef ->
+            val content = mutableListOf<String>()
+            val chapters = mutableListOf<Chapter>()
+            var totalWordCount = 0
+
+            val allTOCRefs = getAllTOCReferences(book.tableOfContents.tocReferences)
+
+            book.spine.spineReferences.forEach { spineRef ->
                 try {
                     val htmlContent = spineRef.resource.reader.readText()
                     val document = Jsoup.parse(htmlContent)
 
-                    document.select("title, section, cover, colophon, imprint, endnote, copyright")
+                    document.select("title, cover, colophon, imprint, endnote, copyright")
                         .remove()
-                    val cleanedText = document.text().trim()
-//                    Jsoup.parse(htmlContent).text() // Strip HTML tags
-                    cleanedText.takeIf { it.isNotBlank() }
+
+                    // Ensure section tags are preserved as they often denote chapters/sections
+                    val cleanedText = document.body().html()
+                        .replace(Regex("<(?!(?:section|p|br|div|h[1-6]))[^>]+>", RegexOption.IGNORE_CASE), "")
+                        .let { Jsoup.parse(it).text() }
+                        .trim()
+
+                    if (cleanedText.isNotBlank()) {
+                        val chapterTitle = allTOCRefs.find { it.resourceId == spineRef.resourceId }?.title
+                            ?: "Chapter ${chapters.size + 1}"
+                        
+                        chapters.add(Chapter(chapterTitle, totalWordCount))
+                        content.add(cleanedText)
+                        
+                        totalWordCount += cleanedText.split(Regex("\\s+")).filter { it.isNotEmpty() }.size
+                    }
                 } catch (e: Exception) {
                     Timber.e(e, "Error extracting text from EPUB spine reference")
-                    null
                 }
             }
 
-            Timber.d("EPUB: $title ($author)")
+            Timber.d("EPUB: $title ($author) with ${chapters.size} chapters")
             EBookFile(
                 title,
                 author,
-                text,
+                content,
+                chapters,
                 audioPath = "",
-                emptyList<TextPart>(),
+                text = emptyList<TextPart>(),
                 language = "",
                 rate = 1.0f,
                 voice = "",
@@ -233,8 +275,9 @@ class EBookDataSource @Inject constructor(
                 "Unknown Title",
                 "Unknown Author",
                 text,
+                emptyList(),
                 audioPath = "",
-                emptyList<TextPart>(),
+                text = emptyList<TextPart>(),
                 language = "",
                 rate = 1.0f,
                 voice = "",
@@ -284,6 +327,7 @@ class EBookDataSource @Inject constructor(
                 title = "Clipboard Content",
                 author = "Unknown Author",
                 content = clipData.split("\n"),
+                chapters = emptyList(),
                 audioPath = "",
                 text = emptyList<TextPart>(),
                 language = "",
@@ -295,4 +339,3 @@ class EBookDataSource @Inject constructor(
         } else null
     }
 }
-

@@ -1,5 +1,7 @@
 package com.psimandan.neuread.voice
 
+import com.psimandan.neuread.data.datasource.ClonedVoice
+import com.psimandan.neuread.data.datasource.PrefsStore
 import android.speech.tts.Voice
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.io.File
 import java.util.Locale
 import javax.inject.Inject
 
@@ -60,12 +63,14 @@ data class NeuReadVoice(
     val quality: Int = 0,
     val latency: Int = 0,
     val requiresNetworkConnection: Boolean = false,
-    val features: Set<String>? = null
+    val features: Set<String>? = null,
+    val clonedVoice: ClonedVoice? = null
 )
 
 @HiltViewModel
 class VoiceSelectorViewModel @Inject constructor(
-    private val repository: VoiceRepository
+    private val repository: VoiceRepository,
+    private val prefsStore: PrefsStore
 ) : ViewModel() {
 
     private val _availableVoices = MutableStateFlow<Set<NeuReadVoice>>(emptySet())
@@ -74,8 +79,29 @@ class VoiceSelectorViewModel @Inject constructor(
     private val _availableLocales = MutableStateFlow<Set<Locale>>(emptySet())
     val availableLocales: StateFlow<Set<Locale>> = _availableLocales
 
+    private val _clonedVoices = MutableStateFlow<List<NeuReadVoice>>(emptyList())
+    val clonedVoices: StateFlow<List<NeuReadVoice>> = _clonedVoices
+
     init {
         Timber.d("BookSettingsScreenView.VoiceSelectorViewModel.init=>")
+        loadClonedVoices()
+    }
+
+    fun loadClonedVoices() {
+        viewModelScope.launch {
+            prefsStore.getClonedVoices().collect { voices ->
+                val neuReadVoices = voices.map { voice ->
+                    NeuReadVoice(
+                        name = voice.name,
+                        language = voice.language,
+                        requiresNetworkConnection = true,
+                        features = setOf("cloned"),
+                        clonedVoice = voice
+                    )
+                }
+                _clonedVoices.value = neuReadVoices
+            }
+        }
     }
 
     fun loadVoices() {
@@ -87,13 +113,34 @@ class VoiceSelectorViewModel @Inject constructor(
                 val fetchedLocales = repository.getAvailableLocales()
                 fetchedVoices to fetchedLocales
             }
+            
+            _availableLocales.value = locales + Locale.US
             _availableVoices.value = voices
-            _availableLocales.value = locales
+
             Timber.d("loadVoices=>${System.currentTimeMillis() - start}")
         }
     }
 
     fun nameToVoice(name: String, language: String): NeuReadVoice {
+        val cloned = _clonedVoices.value.find { it.name == name && it.language == language }
+        if (cloned != null) return cloned
         return repository.nameToVoice(name, language)
+    }
+
+    fun deleteVoice(voice: NeuReadVoice) {
+        viewModelScope.launch {
+            voice.clonedVoice?.let {
+                prefsStore.deleteClonedVoice(it.id)
+            }
+        }
+    }
+
+    fun updateVoice(voice: NeuReadVoice, newName: String, newLanguage: String) {
+        viewModelScope.launch {
+            voice.clonedVoice?.let {
+                val updated = it.copy(name = newName, language = newLanguage)
+                prefsStore.updateClonedVoice(updated)
+            }
+        }
     }
 }

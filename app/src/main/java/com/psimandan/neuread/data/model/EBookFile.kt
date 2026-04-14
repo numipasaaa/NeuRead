@@ -14,6 +14,7 @@ data class EBookFile(
     val title: String,
     val author: String,
     val content: List<String>,
+    val chapters: List<Chapter> = emptyList(),
 
     val audioPath: String,
     val text: List<TextPart>,

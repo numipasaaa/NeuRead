@@ -1,11 +1,21 @@
 package com.psimandan.neuread.voice
 
 import android.content.Context
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import com.psimandan.neuread.data.datasource.ClonedVoice
+import com.psimandan.neuread.data.datasource.PrefsStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.io.File
 import java.util.*
 
 interface SimpleSpeakingCallBack {
@@ -17,8 +27,12 @@ class SimpleSpeechProvider(
     private var currentLocale: Locale = Locale.getDefault(),
     private var currentVoice: Voice,
     private var speechRate: Float = 1.0f,
-    private val speakingCallBack: SimpleSpeakingCallBack?
+    private val speakingCallBack: SimpleSpeakingCallBack?,
+    private val prefsStore: PrefsStore
 ) {
+    private val apiClient = NeuTTSApiClient(context)
+    private val scope = CoroutineScope(Dispatchers.Main + Job())
+    private var mediaPlayer: android.media.MediaPlayer? = null
 
     private val speechListener = object : UtteranceProgressListener() {
         override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
@@ -74,25 +88,80 @@ class SimpleSpeechProvider(
     }
 
     fun speak(text: String) {
-        val utteranceId = "my_utterance_id"
-        val params = Bundle().apply {
-            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
-        }
+        if (currentVoice.isNetworkConnectionRequired) {
+            scope.launch {
+                val audioFile = if (!currentVoice.name.contains("NeuTTS", ignoreCase = true)) {
+                    val clonedVoices = prefsStore.getClonedVoices().first()
+                    val currentClonedVoice = clonedVoices.find { it.name == currentVoice.name }
+                    if (currentClonedVoice != null) {
+                        apiClient.cloneWithCodes(
+                            text = text,
+                            refText = currentClonedVoice.referenceText,
+                            refCodes = currentClonedVoice.codes
+                        )
+                    } else {
+                        apiClient.synthesizeSpeech(text)
+                    }
+                } else {
+                    apiClient.synthesizeSpeech(text)
+                }
 
-        textToSpeech.speak(
-            text,
-            TextToSpeech.QUEUE_FLUSH,
-            null,
-            utteranceId
-        )
+                if (audioFile != null && audioFile.exists()) {
+                    playAudioFile(audioFile)
+                } else {
+                    Timber.e("Failed to synthesize speech for sample")
+                    speakingCallBack?.onError(null, 0)
+                }
+            }
+        } else {
+            val utteranceId = "my_utterance_id"
+            val params = Bundle().apply {
+                putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
+            }
+
+            textToSpeech.speak(
+                text,
+                TextToSpeech.QUEUE_FLUSH,
+                null,
+                utteranceId
+            )
+        }
+    }
+
+    private fun playAudioFile(file: File) {
+        try {
+            mediaPlayer?.release()
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(file.absolutePath)
+                setOnCompletionListener {
+                    file.delete()
+                }
+                setOnErrorListener { _, what, extra ->
+                    Timber.e("MediaPlayer error: $what, $extra")
+                    speakingCallBack?.onError(null, what)
+                    file.delete()
+                    true
+                }
+                prepare()
+                start()
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Error playing sample audio")
+            speakingCallBack?.onError(null, 0)
+        }
     }
 
     fun stop() {
         Timber.d("textToSpeech.stop()=>${textToSpeech.isSpeaking}")
         textToSpeech.stop()
+        mediaPlayer?.let {
+            if (it.isPlaying) it.stop()
+            it.release()
+        }
+        mediaPlayer = null
     }
 
     fun isSpeaking(): Boolean {
-        return textToSpeech.isSpeaking
+        return textToSpeech.isSpeaking || (mediaPlayer?.isPlaying == true)
     }
 }

@@ -48,7 +48,19 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.psimandan.neuread.data.model.Book
 import com.psimandan.neuread.data.model.Bookmark
 import com.psimandan.neuread.data.model.NeuReadBook
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import com.psimandan.neuread.data.model.Chapter
 import com.psimandan.neuread.ui.components.NiceRoundButton
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import com.psimandan.neuread.ui.player.components.BookmarksSectionView
 import com.psimandan.neuread.ui.player.components.HorizontallyScrolledTextView
 import com.psimandan.neuread.ui.theme.NeuReadTheme
@@ -160,6 +172,10 @@ fun PlayerScreenContent(
     sliderRange: ClosedFloatingPointRange<Float>,
     onEvent: (PlayerEvent) -> Unit
 ) {
+    var showChaptersSheet by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState()
+    val scope = rememberCoroutineScope()
+
     Box {
         Scaffold(
             topBar = {
@@ -324,7 +340,7 @@ fun PlayerScreenContent(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = largeSpace, start = largeSpace),
+                            .padding(bottom = largeSpace, start = largeSpace, end = largeSpace),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         NiceRoundButton(
@@ -334,12 +350,54 @@ fun PlayerScreenContent(
                             diameter = 44.dp,
                             clickHandler = { onEvent(PlayerEvent.AddBookmark) }
                         )
-                        Spacer(modifier = Modifier.width(smallSpace))
-
+                        Spacer(modifier = Modifier.weight(1f))
+                        if (uiState.chapters.isNotEmpty()) {
+                            NiceRoundButton(
+                                contentDescription = "Chapters",
+                                icon = Icons.Filled.List,
+                                diameter = 44.dp,
+                                clickHandler = { showChaptersSheet = true }
+                            )
+                        }
                     }
                 }
             }
         )
+
+        if (showChaptersSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showChaptersSheet = false },
+                sheetState = sheetState
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 32.dp)
+                ) {
+                    Text(
+                        "Chapters",
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                    HorizontalDivider()
+                    LazyColumn {
+                        items(uiState.chapters) { chapter ->
+                            ListItem(
+                                headlineContent = { Text(chapter.title) },
+                                modifier = Modifier.clickable {
+                                    onEvent(PlayerEvent.ChapterClick(chapter))
+                                    scope.launch { sheetState.hide() }.invokeOnCompletion {
+                                        if (!sheetState.isVisible) {
+                                            showChaptersSheet = false
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         if (uiState.totalTimeString.isEmpty() || uiState.totalTimeString.endsWith("00:00")) {
             Box(

@@ -17,6 +17,8 @@ class VoiceDataSource @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
+    fun getContext() = context
+
     private var textToSpeech: TextToSpeech? = null
     private var availableVoices: Set<Voice> = setOf()
     private var availableLocales: Set<Locale> = setOf()

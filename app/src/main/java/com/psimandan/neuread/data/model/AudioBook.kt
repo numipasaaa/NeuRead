@@ -24,6 +24,7 @@ data class AudioBook(
     @SerialName("created")
     override val updated: Long,
     override val bookmarks: MutableList<Bookmark> = mutableListOf(),
+    override val chapters: List<Chapter> = emptyList(),
     val parts: List<TextPart>,
     val audioFilePath: String,
     val voice: String,

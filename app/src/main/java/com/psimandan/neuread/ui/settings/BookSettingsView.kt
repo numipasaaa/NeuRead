@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -84,6 +85,7 @@ fun BookSettingsPreviewBook() {
     NeuReadTheme(darkTheme = false) {
         BookSettingsScreenContent(
             loading = false,
+            downloadProgress = null,
             showVoiceError = false,
             bookState = BookSettingsViewModel.BookUIState(
                 book = NeuReadBook.sampleBooks().last(),
@@ -113,6 +115,7 @@ fun BookSettingsPreviewAudiobook() {
     NeuReadTheme(darkTheme = true) {
         BookSettingsScreenContent(
             loading = false,
+            downloadProgress = null,
             showVoiceError = false,
             bookState = BookSettingsViewModel.BookUIState(
                 book = AudioBook(
@@ -160,6 +163,7 @@ fun BookSettingsScreenView(
     voiceSelector: VoiceSelectorViewModel
 ) {
     val voices by voiceSelector.availableVoices.collectAsState()
+    val clonedVoices by voiceSelector.clonedVoices.collectAsState()
     val locales by voiceSelector.availableLocales.collectAsState()
     val recentLocales = viewModel.recentSelectionsL.values
 
@@ -180,6 +184,7 @@ fun BookSettingsScreenView(
 
     BookSettingsScreenContent(
         loading = viewState.loading,
+        downloadProgress = viewState.downloadProgress,
         showVoiceError = showVoiceError,
         bookState = bookState,
         contextText = contextText,
@@ -187,7 +192,7 @@ fun BookSettingsScreenView(
         selectedLanguage = selectedLanguage,
         recentLocales = recentLocales.toList(),
         availableLocales = locales.toList(),
-        availableVoices = voices.toList(),
+        availableVoices = voices.toList() + clonedVoices.toList(),
         selectedRate = bookState.voiceRate,
         selectedVoice = selectedVoice,
         onEvent = { it.onEvent(model = viewModel, onNavigateBack = onNavigateBack) }
@@ -216,6 +221,7 @@ fun BookSettingsScreenView(
 @Composable
 fun BookSettingsScreenContent(
     loading: Boolean,
+    downloadProgress: Float? = null,
     showVoiceError: Boolean,
     bookState: BookSettingsViewModel.BookUIState,
     contextText: List<String>,
@@ -370,6 +376,18 @@ fun BookSettingsScreenContent(
                                     modifier = Modifier.size(44.dp)
                                 )
                             }
+                            if (bookState.book is Book && selectedVoice.requiresNetworkConnection) {
+                                IconButton(onClick = {
+                                    onEvent(BookSettingsEvent.DownloadAudio)
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Download,
+                                        contentDescription = "download audio",
+                                        tint = colorScheme.primary,
+                                        modifier = Modifier.size(44.dp)
+                                    )
+                                }
+                            }
 
                         }
                         Spacer(Modifier.height(normalSpace))
@@ -414,25 +432,6 @@ fun BookSettingsScreenContent(
                             selectedPage = selectedPage,
                             totalPages = contextText.size,
                             onPageChanged = { onEvent(BookSettingsEvent.PageSelected(it)) }
-                        )
-                        Spacer(Modifier.height(normalSpace))
-                        BasicTextField(
-                            value = if (selectedPage <= contextText.size - 1) {
-                                contextText[selectedPage]
-                            } else "",
-                            textStyle = TextStyle(
-                                fontSize = 17.sp,
-                                color = colorScheme.onSurface
-                            ),
-                            singleLine = false,
-                            minLines = 10,
-                            onValueChange = {},
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    colorScheme.background,
-                                    RoundedCornerShape(4.dp)
-                                )
                         )
                     }
                     Spacer(Modifier.height(normalSpace))
@@ -482,11 +481,22 @@ fun BookSettingsScreenContent(
                     .fillMaxSize()
                     .background(Color(0xcF7f7f7f))
             ) {
-                CircularProgressIndicator(
+                Column(
                     modifier = Modifier.align(Alignment.Center),
-                    color = colorScheme.primary
-                )
-
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(
+                        color = colorScheme.primary
+                    )
+                    downloadProgress?.let { progress ->
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Synthesizing audio: ${(progress * 100).toInt()}%",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
             }
         }
         if (showVoiceError) {

@@ -16,6 +16,11 @@ data class Bookmark(
     var title: String = ""
 )
 
+@Serializable
+data class Chapter(
+    val title: String,
+    val startIndex: Int
+)
 
 @Serializable
 @SerialName("textbook")
@@ -30,7 +35,8 @@ data class Book(
     override val lastPosition: Int,
     @SerialName("created")
     override val updated: Long,
-    override val bookmarks: MutableList<Bookmark> = mutableListOf()
+    override val bookmarks: MutableList<Bookmark> = mutableListOf(),
+    override val chapters: List<Chapter> = emptyList()
 ) : NeuReadBook() {
 
     override fun playerType(): BookPlayerType = BookPlayerType.TTS

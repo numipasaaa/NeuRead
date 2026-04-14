@@ -6,6 +6,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import com.psimandan.extensions.formatSecondsToHMS
+import com.psimandan.neuread.PlaybackSource
 import com.psimandan.neuread.BookPlayer
 import com.psimandan.neuread.data.model.Book
 import com.psimandan.neuread.data.model.Book.Companion.SECONDS_PER_CHARACTER
@@ -20,6 +21,9 @@ import java.util.*
 import kotlin.math.max
 import kotlin.math.min
 
+import com.psimandan.neuread.data.datasource.ClonedVoice
+import com.psimandan.neuread.data.datasource.PrefsStore
+import kotlinx.coroutines.flow.first
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
@@ -58,7 +62,8 @@ interface SpeakingCallBack {
 class SpeechBookPlayer(
     private val context: Context,
     private var voice: Voice,
-    private val speakingCallback: SpeakingCallBack
+    private val speakingCallback: SpeakingCallBack,
+    private val prefsStore: PrefsStore
 ) : BookPlayer {
     companion object {
         const val FRAME_SIZE = 60
@@ -88,7 +93,7 @@ class SpeechBookPlayer(
         }
 
         // Route the initialization based on the selected voice
-        if (voice.name.contains("NeuTTS", ignoreCase = true)) {
+        if (voice.isNetworkConnectionRequired) {
             initializeNeuTts(book)
         } else {
             initializeNativeTts(book, Locale(book.language))
@@ -122,7 +127,8 @@ class SpeechBookPlayer(
                             totalTime = viewState.totalTimeSeconds.toDouble(),
                             bookmarks = book.bookmarks.map {
                                 it.title = titleForBookmark(it.position); it
-                            }
+                            },
+                            chapters = book.chapters
                         )
                     )
                 }
@@ -166,7 +172,9 @@ class SpeechBookPlayer(
                             totalTime = book.viewState.value.totalTimeSeconds.toDouble(),
                             bookmarks = book.bookmarks.map {
                                 it.title = titleForBookmark(it.position); it
-                            })
+                            },
+                            chapters = book.chapters
+                        )
                     )
                 }
             } else {
@@ -255,16 +263,33 @@ class SpeechBookPlayer(
     }
 
     fun speak(text: String, frameSize: Int = 0, frame: List<String> = emptyList()) {
-        if (voice.name.contains("NeuTTS", ignoreCase = true)) {
+        if (voice.isNetworkConnectionRequired) {
             // Route to Server API
             playerScope.launch {
                 // Show loading indicator
                 speakingCallback.onUpdateUI(
-                    speakingCallback.viewState.value.copy(isLoading = true)
+                    speakingCallback.viewState.value.copy(
+                        isLoading = true,
+                        chapters = speakingCallback.book?.chapters ?: emptyList()
+                    )
                 )
 
                 // Synthesize on server
-                val audioFile = neuTtsApiClient?.synthesizeSpeech(text)
+                val audioFile = if (!voice.name.contains("NeuTTS", ignoreCase = true)) {
+                    val clonedVoices = prefsStore.getClonedVoices().first()
+                    val currentClonedVoice = clonedVoices.find { it.name == voice.name }
+                    if (currentClonedVoice != null) {
+                        neuTtsApiClient?.cloneWithCodes(
+                            text = text,
+                            refText = currentClonedVoice.referenceText,
+                            refCodes = currentClonedVoice.codes
+                        )
+                    } else {
+                        neuTtsApiClient?.synthesizeSpeech(text)
+                    }
+                } else {
+                    neuTtsApiClient?.synthesizeSpeech(text)
+                }
 
                 // Hide loading indicator
                 speakingCallback.onUpdateUI(
@@ -296,7 +321,7 @@ class SpeechBookPlayer(
 
     private fun isSpeaking(): Boolean = textToSpeech?.isSpeaking == true || isPlaying
 
-    override fun onPlay(source: Int) {
+    override fun onPlay(source: PlaybackSource) {
         if (isPlaying) return
         isPlaying = true
         playNextFrame()
@@ -371,7 +396,7 @@ class SpeechBookPlayer(
         onStopSpeaking()
         onUserChangePosition(position.toFloat())
         if (isSpeaking()) return
-        onPlay(source = 3)
+        onPlay(source = PlaybackSource.BOOKMARK)
     }
 
     override fun onStopSpeaking() {
@@ -465,7 +490,7 @@ class SpeechBookPlayer(
     override fun onUserChangePosition(value: Float) {
         isPlaying = false
         onStopSpeaking()
-        currentWordIndex = value.coerceIn(0f, totalWords.toFloat() - 1).toInt()
+        currentWordIndex = value.coerceIn(0f, (totalWords - 1).coerceAtLeast(0).toFloat()).toInt()
         val hState = speakingCallback.highlightingState.value
 
         val book = speakingCallback.book as Book
@@ -485,7 +510,11 @@ class SpeechBookPlayer(
             )
         )
         if (isSpeaking()) return
-        onPlay(source = 5)
+        onPlay(source = PlaybackSource.SEEK)
+    }
+
+    override fun onJumpToChapter(position: Int) {
+        onUserChangePosition(position.toFloat())
     }
 
     /**

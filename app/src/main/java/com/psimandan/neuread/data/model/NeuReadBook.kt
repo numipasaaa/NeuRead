@@ -22,6 +22,7 @@ sealed class NeuReadBook {
     abstract val lastPosition: Int
     abstract val updated: Long
     abstract val bookmarks: MutableList<Bookmark>
+    abstract val chapters: List<Chapter>
 
     abstract fun playerType(): BookPlayerType
     abstract fun lazyCalculate(completion: () -> Unit)

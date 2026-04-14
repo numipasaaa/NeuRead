@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -73,7 +74,7 @@ fun LibraryScreenPreview() {
 fun LibraryScreenView(
     viewModel: LibraryScreenViewModel,
     onSelect: (NeuReadBook) -> Unit,
-    onAboutClicked: () -> Unit,
+    onSettingsClicked: () -> Unit,
     onFileSelected: (EBookFile) -> Unit
 ) {
     val books by viewModel.libraryBooks.collectAsState(initial = emptyList())
@@ -116,7 +117,7 @@ fun LibraryScreenView(
                 context,
                 viewModel,
                 onSelect = onSelect,
-                onAboutClicked = onAboutClicked,
+                onSettingsClicked = onSettingsClicked,
                 onFileSelected = onFileSelected,
                 onLauncher = {
                     // File picker only allows RANDR, EPUB, TXT, and PDF files
@@ -152,15 +153,12 @@ fun LibraryScreenContent(
             TopAppBar(
                 title = { Text("Eyes-Free Library") },
                 actions = {
-                    IconButton(onClick = { onEvent(LibraryScreenEvents.AboutClicked) }) {
+                    IconButton(onClick = { onEvent(LibraryScreenEvents.SettingsClicked) }) {
                         Icon(
-                            Icons.Default.Info, contentDescription = "About",
+                            Icons.Default.Settings, contentDescription = "Settings",
                             modifier = Modifier.size(32.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.weight(1F))
-                    Text("Eyes-Free Library", style = MaterialTheme.typography.titleLarge)
-                    Spacer(modifier = Modifier.weight(1F))
                     Column {
                         IconButton(onClick = { onEvent(LibraryScreenEvents.NewBookClicked) }) {
                             Icon(

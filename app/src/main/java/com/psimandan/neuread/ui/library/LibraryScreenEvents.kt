@@ -5,7 +5,7 @@ import com.psimandan.neuread.data.model.EBookFile
 import com.psimandan.neuread.data.model.NeuReadBook
 
 sealed class LibraryScreenEvents {
-    data object AboutClicked : LibraryScreenEvents()
+    data object SettingsClicked : LibraryScreenEvents()
     data object NewBookClicked : LibraryScreenEvents()
     data class FilterWithText(val text: String) : LibraryScreenEvents()
     data class SelectBook(val book: NeuReadBook) : LibraryScreenEvents()
@@ -18,13 +18,13 @@ fun LibraryScreenEvents.onEvent(
     context: android.content.Context,
     model: LibraryScreenViewModel,
     onSelect: (NeuReadBook) -> Unit,
-    onAboutClicked: () -> Unit,
+    onSettingsClicked: () -> Unit,
     onFileSelected: (EBookFile) -> Unit,
     onLauncher: () -> Unit
 ) {
 
     when (this) {
-        LibraryScreenEvents.AboutClicked -> onAboutClicked()
+        LibraryScreenEvents.SettingsClicked -> onSettingsClicked()
         LibraryScreenEvents.NewBookClicked -> model.onShowNewBookPicker(true)
         is LibraryScreenEvents.FilterWithText -> model.onFilterWithText(this.text)
         is LibraryScreenEvents.SelectBook -> onSelect(this.book)
