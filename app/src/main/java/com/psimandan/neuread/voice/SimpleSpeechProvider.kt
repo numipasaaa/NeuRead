@@ -94,13 +94,15 @@ class SimpleSpeechProvider(
                     val clonedVoices = prefsStore.getClonedVoices().first()
                     val currentClonedVoice = clonedVoices.find { it.name == currentVoice.name }
                     if (currentClonedVoice != null) {
-                        apiClient.cloneWithCodes(
-                            text = text,
+                        apiClient.cloneBatch(
+                            sentences = listOf(text),
                             refText = currentClonedVoice.referenceText,
                             refCodes = currentClonedVoice.codes
-                        )
+                        )?.file
                     } else {
-                        apiClient.synthesizeSpeech(text)
+                        // Check if it's one of the integrated voices (Jo, Dave)
+                        val voiceName = currentVoice.name.lowercase().split(" ").firstOrNull()
+                        apiClient.synthesizeSpeech(text, voiceName)
                     }
                 } else {
                     apiClient.synthesizeSpeech(text)

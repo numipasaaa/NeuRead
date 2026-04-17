@@ -20,6 +20,10 @@ sealed class BookSettingsEvent {
     data object PlayAudioSample : BookSettingsEvent()
     data object DismissVoiceErrorDialog : BookSettingsEvent()
     data object DownloadAudio : BookSettingsEvent()
+    data object CancelDownload : BookSettingsEvent()
+    data object DeleteAudio : BookSettingsEvent()
+    data class ToggleDyslexicFont(val enabled: Boolean) : BookSettingsEvent()
+    data class ToggleHighlighting(val enabled: Boolean) : BookSettingsEvent()
 }
 
 fun BookSettingsEvent.onEvent(model: BookSettingsViewModel, onNavigateBack: (NeuReadBook?) -> Unit) {
@@ -54,5 +58,9 @@ fun BookSettingsEvent.onEvent(model: BookSettingsViewModel, onNavigateBack: (Neu
         }
         is BookSettingsEvent.DismissVoiceErrorDialog -> model.dismissVoiceError()
         BookSettingsEvent.DownloadAudio -> model.downloadAudio()
+        BookSettingsEvent.CancelDownload -> model.cancelDownload()
+        BookSettingsEvent.DeleteAudio -> model.deleteAudio()
+        is BookSettingsEvent.ToggleDyslexicFont -> model.toggleDyslexicFont(this.enabled)
+        is BookSettingsEvent.ToggleHighlighting -> model.toggleHighlighting(this.enabled)
     }
 }

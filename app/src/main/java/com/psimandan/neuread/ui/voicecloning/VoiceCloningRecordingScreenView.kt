@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -20,22 +21,34 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.psimandan.neuread.ui.components.LoadingStateManager
+import com.psimandan.neuread.voice.VoiceSelectorViewModel
+import com.psimandan.neuread.voice.languageId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VoiceCloningRecordingScreenView(
     viewModel: VoiceCloningViewModel,
+    voiceSelectorViewModel: VoiceSelectorViewModel,
     onNavigateBack: () -> Unit
 ) {
     val isRecording by viewModel.isRecording.collectAsState()
     val recordingCompleted by viewModel.recordingCompleted.collectAsState()
     val isUploading by viewModel.isUploading.collectAsState()
     val uploadSuccess by viewModel.uploadSuccess.collectAsState()
+
+    val availableLocales by voiceSelectorViewModel.availableLocales.collectAsState()
     
     val context = LocalContext.current
-    val prompt = "The quick brown fox jumps over the lazy dog. Recording your voice helps us create a unique digital double for you."
+    val prompt = "So I'm live on radio. And I say, well, my dear friend James here clearly, and the whole room just froze. Turns out I'd completely misspoken and mentioned our other friend."
 
     var voiceName by remember { mutableStateOf("") }
+    var selectedLanguage by remember { mutableStateOf("en_US") }
+    var expanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.resetRecording()
+        voiceSelectorViewModel.loadVoices()
+    }
 
     LaunchedEffect(uploadSuccess) {
         if (uploadSuccess == true) {
@@ -177,12 +190,48 @@ fun VoiceCloningRecordingScreenView(
                         singleLine = true
                     )
 
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Box {
+                        OutlinedTextField(
+                            value = availableLocales.find { it.languageId() == selectedLanguage }?.displayName ?: selectedLanguage,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Language") },
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                            }
+                        )
+                        DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            modifier = Modifier.fillMaxWidth(0.8f)
+                        ) {
+                            availableLocales.forEach { locale ->
+                                DropdownMenuItem(
+                                    text = { Text(locale.displayName) },
+                                    onClick = {
+                                        selectedLanguage = locale.languageId()
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                        // Workaround to make the whole field clickable
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable { expanded = true }
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(24.dp))
 
                     Button(
                         onClick = {
                             if (voiceName.isNotBlank()) {
-                                viewModel.uploadVoice(voiceName, prompt)
+                                viewModel.uploadVoice(voiceName, selectedLanguage, prompt)
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -200,7 +249,7 @@ fun VoiceCloningRecordingScreenView(
                     }
 
                     TextButton(
-                        onClick = { viewModel.startRecording() },
+                        onClick = { viewModel.resetRecording() },
                         modifier = Modifier.padding(top = 8.dp)
                     ) {
                         Text("Record Again")

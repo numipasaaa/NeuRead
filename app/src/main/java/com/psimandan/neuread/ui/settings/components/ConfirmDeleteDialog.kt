@@ -94,8 +94,8 @@ fun ConfirmDeleteDialog(
             NiceButton(
                 enabled = buttonEnabled,
                 title = "DELETE",
-                titleColor = Color.White,
-                color = Color.Red,
+                titleColor = MaterialTheme.colorScheme.onError,
+                color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.width(160.dp),
                 clickHandler = onDeleteClicked
             )
@@ -103,8 +103,8 @@ fun ConfirmDeleteDialog(
         dismissButton = {
             NiceButton(
                 title = "Cancel",
-                color = Color.Gray,
-                titleColor = Color.White,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                titleColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.width(160.dp),
                 clickHandler = onDismissRequest
             )
@@ -133,14 +133,11 @@ fun ConfirmDeleteDialog(
                     placeholder = {
                         Text(
                             text = "Input word delete",
-                            color = Color.LightGray
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
                     },
                     singleLine = true,
-                    textStyle = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Normal,
-                        fontSize = 28.sp,
+                    textStyle = MaterialTheme.typography.headlineSmall.copy(
                         color = MaterialTheme.colorScheme.onSurface
                     ),
                     onValueChange = onValueChange,
@@ -151,7 +148,7 @@ fun ConfirmDeleteDialog(
                     keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     colors = TextFieldDefaults.outlinedTextFieldColors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = Color.Gray
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
                     )
                 )
                 Spacer(modifier = Modifier.height(smallSpace))
@@ -197,16 +194,16 @@ fun DeleteDialog(
                 Row {
                     NiceButton(
                         title = "DELETE",
-                        titleColor = Color.White,
-                        color = Color.Red,
+                        titleColor = MaterialTheme.colorScheme.onError,
+                        color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.width(120.dp),
                         clickHandler = onDeleteClicked
                     )
                     Spacer(Modifier.weight(1f))
                     NiceButton(
                         title = "Cancel",
-                        color = Color.Gray,
-                        titleColor = Color.White,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        titleColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.width(120.dp),
                         clickHandler = onDismissRequest
                     )

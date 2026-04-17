@@ -20,6 +20,7 @@ interface LibraryDataSource {
      suspend fun selectBook(bookId: String)
      suspend fun getSelectedBook(): NeuReadBook?
      suspend fun unselectBook()
+     suspend fun getBookById(bookId: String): NeuReadBook?
 }
 
 @Singleton
@@ -50,6 +51,10 @@ class LibraryAssetDataSource @Inject constructor(@ApplicationContext private val
     override suspend fun selectBook(bookId: String) = throw UnsupportedOperationException()
     override suspend fun getSelectedBook(): NeuReadBook? = throw UnsupportedOperationException()
     override suspend fun unselectBook() = throw UnsupportedOperationException()
+
+    override suspend fun getBookById(bookId: String): NeuReadBook? {
+        return loadBooks().find { it.id == bookId }
+    }
 
 
 

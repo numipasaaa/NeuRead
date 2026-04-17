@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import com.psimandan.neuread.ui.theme.NeuReadTheme
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -46,31 +47,31 @@ fun SpeechSpeedSelector(
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .fillMaxWidth(),
+        horizontalAlignment = Alignment.Start
     ) {
         Text(
             text = "Speech Rate",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(bottom = 8.dp)
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(bottom = 12.dp)
         )
 
         LazyRow(
             state = listState,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             items(speeds) { speed ->
+                val isSelected = selectedSpeed == speed
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .background(
-                            color = if (selectedSpeed == speed) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(8.dp)
+                            color = if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(12.dp)
                         )
-                        .padding(horizontal = 2.dp)
                         .clickable {
                             selectedSpeed = speed
                             onSpeedSelected(speed)
@@ -81,12 +82,12 @@ fun SpeechSpeedSelector(
                                 }
                             }
                         }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Text(
                         text = String.format(Locale.getDefault(), "%.2f", speed),
-                        color = if (selectedSpeed == speed) MaterialTheme.colorScheme.surface else Color.Black,
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(8.dp)
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 }
             }

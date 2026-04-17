@@ -56,6 +56,13 @@ class VoiceCloningViewModel @Inject constructor(
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
     private val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
 
+    fun resetRecording() {
+        _recordingCompleted.value = false
+        _uploadSuccess.value = null
+        _isRecording.value = false
+        stopPlayback()
+    }
+
     @SuppressLint("MissingPermission")
     fun startRecording() {
         _recordingCompleted.value = false
@@ -240,7 +247,7 @@ class VoiceCloningViewModel @Inject constructor(
         _isPlaying.value = false
     }
 
-    fun uploadVoice(name: String, referenceText: String) {
+    fun uploadVoice(name: String, language: String, referenceText: String) {
         val file = currentOutputFile ?: return
         if (!file.exists()) return
 
@@ -249,11 +256,23 @@ class VoiceCloningViewModel @Inject constructor(
             try {
                 val codes = apiClient.encodeReference(file)
                 if (codes != null) {
+                    val persistentFile = File(
+                        getApplication<Application>().filesDir,
+                        "voice_sample_${System.currentTimeMillis()}.wav"
+                    )
+                    file.inputStream().use { input ->
+                        persistentFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+
                     val voice = ClonedVoice(
                         id = UUID.randomUUID().toString(),
                         name = name,
+                        language = language,
                         referenceText = referenceText,
-                        codes = codes
+                        codes = codes,
+                        samplePath = persistentFile.absolutePath
                     )
                     prefsStore.saveClonedVoice(voice)
                     _uploadSuccess.value = true

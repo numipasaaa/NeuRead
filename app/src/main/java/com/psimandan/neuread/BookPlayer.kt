@@ -1,6 +1,7 @@
 package com.psimandan.neuread
 
 import com.psimandan.neuread.data.model.Bookmark
+import com.psimandan.neuread.voice.SpeakingCallBack
 
 enum class PlaybackSource {
     USER_ACTION,
@@ -20,7 +21,9 @@ interface BookPlayer {
     fun onJumpToChapter(position: Int)
     fun onSaveBookmark()
     fun onDeleteBookmark(bookmark: Bookmark)
+    fun onUpdateBookmarkNote(bookmark: Bookmark, note: String)
     fun onClose()
+    fun updateCallback(callback: SpeakingCallBack)
 
     fun currentTimeElapsed(): Long
 }

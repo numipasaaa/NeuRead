@@ -27,42 +27,58 @@ class LibraryDiskDataSource @Inject constructor(@ApplicationContext private val 
 
 
     override fun loadBooks(): List<NeuReadBook> {
-        val books = mutableListOf<NeuReadBook>()
+        val booksMap = mutableMapOf<String, NeuReadBook>()
         val json = Json { ignoreUnknownKeys = true }
+        
+        // Load regular books
         libraryDir.listFiles()?.forEach { file ->
-            val jsonText = file.readText()
-            val book = json.decodeFromString(Book.serializer(), jsonText)
-            books.add(book)
+            try {
+                val jsonText = file.readText()
+                val book = json.decodeFromString(Book.serializer(), jsonText)
+                booksMap[book.id] = book
+            } catch (e: Exception) {
+                Timber.e(e, "Error loading book: ${file.name}")
+            }
         }
+        
+        // Load audiobooks (priority over regular books)
         audiobooksDir.listFiles()?.forEach { file ->
-            val jsonText = file.readText()
-            val book = json.decodeFromString(AudioBook.serializer(), jsonText)
-            books.add(book)
+            try {
+                val jsonText = file.readText()
+                val book = json.decodeFromString(AudioBook.serializer(), jsonText)
+                booksMap[book.id] = book
+            } catch (e: Exception) {
+                Timber.e(e, "Error loading audiobook: ${file.name}")
+            }
         }
-        return books
+        return booksMap.values.toList()
     }
 
     override suspend fun addBook(book: NeuReadBook) {
-        if (book.playerType() == BookPlayerType.AUDIO) {
+        if (book is AudioBook) {
             val bookFile = File(audiobooksDir, "${book.id}.json")
             bookFile.writeText(Json.encodeToString(book))
+            // Ensure we remove any old text-only version
+            File(libraryDir, "${book.id}.json").delete()
         } else {
             val bookFile = File(libraryDir, "${book.id}.json")
             bookFile.writeText(Json.encodeToString(book))
+            // Ensure we remove any old audio version
+            File(audiobooksDir, "${book.id}.json").delete()
         }
     }
 
     override suspend fun updateBook(book: NeuReadBook) {
-        if (book.playerType() == BookPlayerType.AUDIO) {
-            val bookFile = File(audiobooksDir, "${book.id}.json")
-            if (bookFile.exists()) {
-                bookFile.writeText(Json.encodeToString(book))
-            }
+        if (book is AudioBook) {
+            val audioFile = File(audiobooksDir, "${book.id}.json")
+            audioFile.writeText(Json.encodeToString(book))
+            // Clean up text-only version if it exists
+            File(libraryDir, "${book.id}.json").delete()
         } else {
-            val bookFile = File(libraryDir, "${book.id}.json")
-            if (bookFile.exists()) {
-                bookFile.writeText(Json.encodeToString(book))
-            }
+            val textFile = File(libraryDir, "${book.id}.json")
+            textFile.writeText(Json.encodeToString(book))
+            // Clean up audio version if it exists
+            File(audiobooksDir, "${book.id}.json").delete()
         }
     }
 
@@ -108,16 +124,16 @@ class LibraryDiskDataSource @Inject constructor(@ApplicationContext private val 
         val selectedBookFile1 = File(libraryDir, "$selectedId.json")
         val selectedBookFile2 = File(audiobooksDir, "$selectedId.json")
         val json = Json { ignoreUnknownKeys = true }
-        val book = if (selectedBookFile1.exists()) {
-            val jsonText = async {
-                selectedBookFile1.inputStream().bufferedReader().use { it.readText() }
-            }.await()
-            async { json.decodeFromString(Book.serializer(), jsonText) }.await()
-        } else if (selectedBookFile2.exists()) {
+        val book = if (selectedBookFile2.exists()) {
             val jsonText = async {
                 selectedBookFile2.inputStream().bufferedReader().use { it.readText() }
             }.await()
             async { json.decodeFromString(AudioBook.serializer(), jsonText) }.await()
+        } else if (selectedBookFile1.exists()) {
+            val jsonText = async {
+                selectedBookFile1.inputStream().bufferedReader().use { it.readText() }
+            }.await()
+            async { json.decodeFromString(Book.serializer(), jsonText) }.await()
         } else {
             null
         }
@@ -128,5 +144,9 @@ class LibraryDiskDataSource @Inject constructor(@ApplicationContext private val 
         if (selectedFile.exists()) {
             selectedFile.delete()
         }
+    }
+
+    override suspend fun getBookById(bookId: String): NeuReadBook? {
+        return loadBooks().find { it.id == bookId }
     }
 }

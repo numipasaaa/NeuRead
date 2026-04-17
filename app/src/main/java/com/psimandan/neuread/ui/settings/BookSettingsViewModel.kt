@@ -21,20 +21,30 @@ import com.psimandan.neuread.voice.SimpleSpeakingCallBack
 import com.psimandan.neuread.voice.SimpleSpeechProvider
 import com.psimandan.neuread.voice.languageId
 import com.psimandan.neuread.data.model.Chapter
+import androidx.work.Constraints
+import androidx.work.Data
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import com.psimandan.neuread.audio.DownloadAudioWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.SequenceInputStream
 import java.util.Locale
 import javax.inject.Inject
 import kotlin.math.min
@@ -69,6 +79,39 @@ class BookSettingsViewModel @Inject constructor(
     private var mediaPlayer: MediaPlayer? = null
     val recentSelectionsL: LimitedDictionary = LimitedDictionary(limit = 5U)
 
+    data class BookUIState(
+        val book: NeuReadBook? = null,
+        val title: String = "",
+        val author: String = "",
+        val language: String = "",
+        val voiceIdentifier: String = "",
+        val voiceRate: Float = 1.0f,
+        val text: List<String> = emptyList(),
+        val audioPath: String = "",
+        val parts: List<TextPart> = emptyList(),
+        val voice: String = "",
+        val model: String = "",
+        val bookSource: String = ""
+    )
+
+    data class SettingsUIState(
+        val newBook: Boolean = false,
+        val loading: Boolean = false,
+        val showDeleteDialog: Boolean = false,
+        val isSpeaking: Boolean = false,
+        val selectedPage: Int = 0,
+        val showVoiceError: Boolean = false,
+        val downloadProgress: Float? = null,
+        val dyslexicFontEnabled: Boolean = false,
+        val highlightingEnabled: Boolean = true
+    )
+
+    private val _state = MutableStateFlow(BookUIState())
+    val bookState: StateFlow<BookUIState> get() = _state.asStateFlow()
+
+    private val _viewState = MutableStateFlow(SettingsUIState())
+    val viewState: StateFlow<SettingsUIState> get() = _viewState.asStateFlow()
+
     fun payTextSample(language: Locale, voice: Voice?, rate: Float) {
         voice?.let {
             if (bookState.value.book is Book) {
@@ -88,7 +131,6 @@ class BookSettingsViewModel @Inject constructor(
                                     errorCode == TextToSpeech.ERROR_SERVICE
                                 ) {
                                     Timber.e("Network error1, retrying with offline voice...")
-                                    // Retry with offline voices or notify the user
                                     viewModelScope.launch {
                                         _viewState.emit(_viewState.value.copy(showVoiceError = true))
                                     }
@@ -106,14 +148,8 @@ class BookSettingsViewModel @Inject constructor(
                 }
             }
         } ?: run {
-            Toast.makeText(
-                application,
-                "Please select a voice first!",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(application, "Please select a voice first!", Toast.LENGTH_SHORT).show()
         }
-
-
     }
 
     fun payAudioSample() {
@@ -151,230 +187,218 @@ class BookSettingsViewModel @Inject constructor(
         val book = bookState.value.book as? Book ?: return
         val voiceName = bookState.value.voiceIdentifier
         
-        viewModelScope.launch {
-            _viewState.emit(_viewState.value.copy(loading = true, downloadProgress = 0f))
+        // Immediate UI feedback
+        _viewState.update { it.copy(downloadProgress = 0f) }
+        
+        val workManager = WorkManager.getInstance(application)
+        val workRequest = OneTimeWorkRequestBuilder<DownloadAudioWorker>()
+            .setConstraints(Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build())
+            .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .setInputData(
+                Data.Builder()
+                    .putString("bookId", book.id)
+                    .putString("bookTitle", book.title)
+                    .putString("voiceName", voiceName)
+                    .build()
+            )
+            .addTag("download_${book.id}")
+            .build()
             
-            try {
-                val clonedVoices = prefsStore.getClonedVoices().first()
-                val currentClonedVoice = clonedVoices.find { it.name == voiceName }
-                val apiClient = NeuTTSApiClient(application)
-                
-                val allSentences = book.text.flatMap { text ->
-                    text.split(Regex("(?<=[.!?])\\s+")).filter { it.isNotBlank() }
-                }
-                
-                val audioParts = mutableListOf<TextPart>()
-                val tempFiles = mutableListOf<File>()
-                var currentTotalTimeMs = 0
-                
-                for ((index, sentence) in allSentences.withIndex()) {
-                    val audioFile = if (currentClonedVoice != null) {
-                        apiClient.cloneWithCodes(
-                            text = sentence,
-                            refText = currentClonedVoice.referenceText,
-                            refCodes = currentClonedVoice.codes
-                        )
-                    } else {
-                        apiClient.synthesizeSpeech(sentence)
+        workManager.enqueue(workRequest)
+        trackActiveDownload(book.id)
+    }
+
+    fun cancelDownload() {
+        val book = bookState.value.book as? Book ?: return
+        val workManager = WorkManager.getInstance(application)
+        workManager.cancelAllWorkByTag("download_${book.id}")
+        _viewState.update { it.copy(downloadProgress = null) }
+    }
+
+    private var downloadJob: kotlinx.coroutines.Job? = null
+
+    private fun trackActiveDownload(bookId: String) {
+        downloadJob?.cancel()
+        val workManager = WorkManager.getInstance(application)
+        downloadJob = viewModelScope.launch {
+            workManager.getWorkInfosByTagFlow("download_$bookId")
+                .distinctUntilChanged()
+                .collect { workInfos ->
+                    Timber.d("trackActiveDownload=> $bookId, workInfos size: ${workInfos.size}")
+                    val activeWork = workInfos.firstOrNull { 
+                        it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED 
                     }
                     
-                    if (audioFile != null && audioFile.exists()) {
-                        tempFiles.add(audioFile)
-                        audioParts.add(TextPart(currentTotalTimeMs, sentence))
+                    if (activeWork != null) {
+                        Timber.d("trackActiveDownload=> activeWork found: ${activeWork.state}")
+                        val progress = activeWork.progress.getFloat("progress", 0f)
+                        Timber.d("trackActiveDownload=> progress: $progress")
+                        _viewState.update { it.copy(loading = false, downloadProgress = progress) }
+                    } else {
+                        val latestWork = workInfos.maxByOrNull { it.id } 
+                        Timber.d("trackActiveDownload=> no active work. Latest state: ${latestWork?.state}")
                         
-                        val duration = getAudioDuration(audioFile)
-                        currentTotalTimeMs += duration.toInt()
+                        if (latestWork != null) {
+                            if (latestWork.state == WorkInfo.State.SUCCEEDED) {
+                                if (bookState.value.book is Book && _viewState.value.downloadProgress != null) {
+                                    Timber.d("trackActiveDownload=> download succeeded, refreshing")
+                                    _viewState.update { it.copy(downloadProgress = null) }
+                                    setUpBook()
+                                }
+                            } else if (latestWork.state == WorkInfo.State.FAILED) {
+                                if (_viewState.value.downloadProgress != null) {
+                                    _viewState.update { it.copy(downloadProgress = null) }
+                                    Toast.makeText(application, "Download failed", Toast.LENGTH_SHORT).show()
+                                }
+                            } else if (latestWork.state == WorkInfo.State.CANCELLED) {
+                                _viewState.update { it.copy(downloadProgress = null) }
+                            }
+                        }
                     }
-                    _viewState.emit(_viewState.value.copy(downloadProgress = (index + 1).toFloat() / allSentences.size))
                 }
-                
-                if (tempFiles.isNotEmpty()) {
-                    val finalAudioFile = mergeAudioFiles(tempFiles)
-                    if (finalAudioFile != null) {
-                        val audioBook = AudioBook(
-                            id = book.id,
-                            title = book.title,
-                            author = book.author,
-                            language = book.language,
-                            voiceRate = book.voiceRate,
-                            lastPosition = 0,
-                            updated = System.currentTimeMillis(),
-                            bookmarks = book.bookmarks.toMutableList(),
-                            chapters = book.chapters,
-                            parts = audioParts,
-                            audioFilePath = finalAudioFile.absolutePath,
-                            voice = voiceName,
-                            model = "NeuTTS",
-                            bookSource = "Cloned"
+        }
+    }
+
+    fun deleteAudio() {
+        val audioBook = bookState.value.book as? AudioBook ?: return
+        
+        viewModelScope.launch {
+            _viewState.emit(_viewState.value.copy(loading = true))
+            try {
+                withContext(Dispatchers.IO) {
+                    val file = File(audioBook.audioFilePath)
+                    if (file.exists()) {
+                        file.delete()
+                    }
+                    
+                    val book = Book(
+                        id = audioBook.id,
+                        title = audioBook.title,
+                        author = audioBook.author,
+                        language = audioBook.language,
+                        voiceIdentifier = "en",
+                        voiceRate = audioBook.voiceRate,
+                        text = audioBook.parts.map { it.text },
+                        lastPosition = audioBook.lastPosition,
+                        updated = System.currentTimeMillis(),
+                        bookmarks = audioBook.bookmarks,
+                        chapters = audioBook.chapters
+                    )
+                    
+                    repository.updateBook(book)
+                    
+                    withContext(Dispatchers.Main) {
+                        _state.value = _state.value.copy(
+                            book = book,
+                            voiceIdentifier = "en",
+                            text = book.text,
+                            audioPath = "",
+                            parts = emptyList()
                         )
-                        repository.updateBook(audioBook)
-                        _state.value = _state.value.copy(book = audioBook)
-                        Toast.makeText(application, "Audio downloaded successfully", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(application, "Audio deleted, reverted to text book", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
-                Timber.e(e, "Error downloading audio")
-                Toast.makeText(application, "Error downloading audio: ${e.message}", Toast.LENGTH_LONG).show()
+                Timber.e(e, "Error deleting audio")
+                Toast.makeText(application, "Error deleting audio: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
-                _viewState.emit(_viewState.value.copy(loading = false, downloadProgress = null))
+                _viewState.emit(_viewState.value.copy(loading = false))
             }
         }
     }
-
-    private fun getAudioDuration(file: File): Long {
-        val retriever = android.media.MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(file.absolutePath)
-            retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
-        } catch (e: Exception) {
-            0L
-        } finally {
-            retriever.release()
-        }
-    }
-
-    private fun mergeAudioFiles(files: List<File>): File? {
-        val outputFile = File(application.filesDir, "audio_book_${System.currentTimeMillis()}.wav")
-        try {
-            var totalDataSize = 0L
-            var wavHeader: ByteArray? = null
-
-            FileOutputStream(outputFile).use { out ->
-                // Placeholder for header
-                out.write(ByteArray(44))
-
-                files.forEach { file ->
-                    FileInputStream(file).use { input ->
-                        val header = ByteArray(44)
-                        input.read(header)
-                        if (wavHeader == null) wavHeader = header
-
-                        val buffer = ByteArray(8192)
-                        var bytesRead: Int
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            out.write(buffer, 0, bytesRead)
-                            totalDataSize += bytesRead
-                        }
-                    }
-                    file.delete()
-                }
-            }
-
-            // Update header with correct sizes
-            wavHeader?.let { header ->
-                val raf = java.io.RandomAccessFile(outputFile, "rw")
-                header[4] = ((totalDataSize + 36) and 0xff).toByte()
-                header[5] = (((totalDataSize + 36) shr 8) and 0xff).toByte()
-                header[6] = (((totalDataSize + 36) shr 16) and 0xff).toByte()
-                header[7] = (((totalDataSize + 36) shr 24) and 0xff).toByte()
-
-                header[40] = (totalDataSize and 0xff).toByte()
-                header[41] = ((totalDataSize shr 8) and 0xff).toByte()
-                header[42] = ((totalDataSize shr 16) and 0xff).toByte()
-                header[43] = ((totalDataSize shr 24) and 0xff).toByte()
-
-                raf.write(header)
-                raf.close()
-            }
-
-            return outputFile
-        } catch (e: Exception) {
-            Timber.e(e, "Error merging audio files")
-            return null
-        }
-    }
-
-    data class BookUIState(
-        val book: NeuReadBook? = null,
-        val title: String = "",
-        val author: String = "",
-        val language: String = "",
-        val voiceIdentifier: String = "",
-        val voiceRate: Float = 1.0f,
-        val text: List<String> = emptyList(),
-
-
-        val audioPath: String = "",
-        val parts: List<TextPart> = emptyList(),
-        val voice: String = "",
-        val model: String = "",
-        val bookSource: String = ""
-    )
-
-    data class SettingsUIState(
-        val newBook: Boolean = false,
-        val loading: Boolean = false,
-        val showDeleteDialog: Boolean = false,
-        val isSpeaking: Boolean = false,
-        val selectedPage: Int = 0,
-        val showVoiceError: Boolean = false,
-        val downloadProgress: Float? = null
-    )
-
-    private val _state = MutableStateFlow(BookUIState())
-    val bookState: StateFlow<BookUIState> get() = _state.asStateFlow()
-
-    private val _viewState = MutableStateFlow(SettingsUIState())
-    val viewState: StateFlow<SettingsUIState> get() = _viewState.asStateFlow()
-
 
     fun setUpBook() {
         Timber.d("setUpBook=>")
         viewModelScope.launch {
             if (viewState.value.newBook) {
+                Timber.d("setUpBook=>newBook skipping")
                 return@launch
             }
-            _state.value = BookUIState()
-            _viewState.emit(SettingsUIState(newBook = false, loading = true)) // Immediate UI update
+            _viewState.update { it.copy(loading = true) }
 
             val book = withContext(Dispatchers.IO) {
                 repository.getSelectedBook()
             }
-            val recentSelections = prefsStore.selectedLanguages().first() // Get latest value only
+            Timber.d("setUpBook=>loaded book: ${book?.id}")
+            
+            val recentSelections = try {
+                withContext(Dispatchers.IO) {
+                    prefsStore.selectedLanguages().first()
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Error loading recent selections")
+                emptyList()
+            }
             recentSelections.forEach { selected ->
                 recentSelectionsL.push(value = selected)
             }
-            Timber.d("setUpBook=>${book?.voiceRate}")
+            Timber.d("setUpBook=>voiceRate: ${book?.voiceRate}")
 
-            withContext(Dispatchers.Main) {
-                if (book is Book) {
-                    _state.value = _state.value.copy(
-                        book = book,
-                        title = book.title,
-                        author = book.author,
-                        language = book.language,
-                        voiceIdentifier = book.voiceIdentifier,
-                        voiceRate = book.voiceRate,
-                        text = book.text,
-                        audioPath = "",
-                        parts = emptyList(),
-                        voice = "",
-                        model = ""
-                    )
-                } else if (book is AudioBook) {
-                    _state.value = _state.value.copy(
-                        book = book,
-                        title = book.title,
-                        author = book.author,
-                        language = book.language,
-                        voiceIdentifier = "",
-                        voiceRate = book.voiceRate,
-                        text = emptyList(),
-                        audioPath = book.audioFilePath,
-                        parts = book.parts,
-                        voice = book.voice,
-                        model = book.model
-                    )
-                }
-                _viewState.emit(_viewState.value.copy(loading = false)) // Ensure loading indicator stops
+            if (book is Book) {
+                _state.value = _state.value.copy(
+                    book = book,
+                    title = book.title,
+                    author = book.author,
+                    language = book.language,
+                    voiceIdentifier = book.voiceIdentifier,
+                    voiceRate = book.voiceRate,
+                    text = book.text,
+                    audioPath = "",
+                    parts = emptyList(),
+                    voice = "",
+                    model = ""
+                )
+                trackActiveDownload(book.id)
+            } else if (book is AudioBook) {
+                _state.value = _state.value.copy(
+                    book = book,
+                    title = book.title,
+                    author = book.author,
+                    language = book.language,
+                    voiceIdentifier = "",
+                    voiceRate = book.voiceRate,
+                    text = emptyList(),
+                    audioPath = book.audioFilePath,
+                    parts = book.parts,
+                    voice = book.voice,
+                    model = book.model
+                )
             }
+            _viewState.update { it.copy(loading = false) }
+            Timber.d("setUpBook=>done")
+        }
+    }
+
+    fun loadSettings() {
+        viewModelScope.launch {
+            prefsStore.isDyslexicFontEnabled().collectLatest { enabled ->
+                _viewState.update { it.copy(dyslexicFontEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            prefsStore.isHighlightingEnabled().collectLatest { enabled ->
+                _viewState.update { it.copy(highlightingEnabled = enabled) }
+            }
+        }
+    }
+
+    fun toggleDyslexicFont(enabled: Boolean) {
+        viewModelScope.launch {
+            prefsStore.saveDyslexicFontEnabled(enabled)
+        }
+    }
+
+    fun toggleHighlighting(enabled: Boolean) {
+        viewModelScope.launch {
+            prefsStore.saveHighlightingEnabled(enabled)
         }
     }
 
     fun createANewBook(ebook: EBookFile) {
         Timber.d("BookSettingsScreenView.createANewBook=>")
         viewModelScope.launch {
-
             val language = if (ebook.audioPath.isNotEmpty()) {
                 ebook.language
             } else {
@@ -403,11 +427,10 @@ class BookSettingsViewModel @Inject constructor(
                     model = ebook.model,
                     bookSource = ebook.bookSource,
                     updated = System.currentTimeMillis(),
-                    bookmarks = emptyList<Bookmark>().toMutableList(),
+                    bookmarks = mutableListOf(),
                     chapters = chapters
                 )
             } else {
-
                 Book(
                     title = ebook.title,
                     author = ebook.author,
@@ -417,7 +440,7 @@ class BookSettingsViewModel @Inject constructor(
                     text = ebook.content,
                     lastPosition = 0,
                     updated = System.currentTimeMillis(),
-                    bookmarks = emptyList<Bookmark>().toMutableList(),
+                    bookmarks = mutableListOf(),
                     chapters = chapters
                 )
             }
@@ -427,9 +450,8 @@ class BookSettingsViewModel @Inject constructor(
                 author = ebook.author,
                 language = language,
                 voiceIdentifier = "en",
-                voiceRate = ebook.rate,
+                voiceRate = 1.0f,
                 text = ebook.content,
-
                 audioPath = ebook.audioPath,
                 parts = ebook.text,
                 voice = ebook.voice,
@@ -467,7 +489,6 @@ class BookSettingsViewModel @Inject constructor(
     }
 
     fun onCancel(onNewBook: () -> Unit, onUpdate: () -> Unit) {
-        Timber.d("BookSettingsScreenView.onCancel=>")
         viewModelScope.launch {
             if (_viewState.value.newBook) {
                 _viewState.value = _viewState.value.copy(newBook = false)
@@ -479,7 +500,6 @@ class BookSettingsViewModel @Inject constructor(
     }
 
     fun onSave(completed: () -> Unit) {
-        Timber.d("BookSettingsScreenView.onSave=>")
         viewModelScope.launch {
             _viewState.value = _viewState.value.copy(loading = true)
 
@@ -495,7 +515,6 @@ class BookSettingsViewModel @Inject constructor(
                                 bookState.value.text
                             }
                             
-                            // Recalculate chapters if text has been trimmed
                             val updatedChapters = if (text.size != it.text.size) {
                                 val newChapters = mutableListOf<Chapter>()
                                 var currentWordIndex = 0
@@ -538,7 +557,6 @@ class BookSettingsViewModel @Inject constructor(
                 prefsStore.saveSelectedLanguages(recentSelectionsL.values)
             }
 
-            // Back to UI thread
             completed()
             _viewState.value = _viewState.value.copy(loading = false)
             mediaPlayer?.apply {
@@ -554,7 +572,6 @@ class BookSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _viewState.value = _viewState.value.copy(selectedPage = page)
         }
-
     }
 
     fun onShowDelete(show: Boolean) {

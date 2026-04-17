@@ -115,6 +115,10 @@ dependencies {
 
     implementation(libs.androidx.core.splashscreen)
 
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    kapt(libs.androidx.hilt.compiler)
+
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(libs.onnxruntime.android)
 }

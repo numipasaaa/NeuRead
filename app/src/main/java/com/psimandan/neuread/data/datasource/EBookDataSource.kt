@@ -10,6 +10,9 @@ import com.psimandan.neuread.data.model.Chapter
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
+import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
+import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination
+import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -166,6 +169,18 @@ class EBookDataSource @Inject constructor(
         }
     }
 
+    private fun getAllOutlineItems(item: PDOutlineItem?): List<PDOutlineItem> {
+        val result = mutableListOf<PDOutlineItem>()
+        var current = item
+        while (current != null) {
+            result.add(current)
+            // Recursively add children
+            result.addAll(getAllOutlineItems(current.firstChild))
+            current = current.nextSibling
+        }
+        return result
+    }
+
     private suspend fun extractPdfText(input: InputStream?): EBookFile? = withContext(Dispatchers.IO) {
         input ?: return@withContext null
         return@withContext try {
@@ -174,15 +189,57 @@ class EBookDataSource @Inject constructor(
                 val title = document.documentInformation.title ?: "Unknown Title"
                 val author = document.documentInformation.author ?: "Unknown Author"
 
-                val text = PDFTextStripper().getText(document).split("\n")
-                Timber.d("PDF: $title ($author)")
+                val content = mutableListOf<String>()
+                val pageWordOffsets = mutableListOf<Int>()
+                var totalWordsSoFar = 0
+                val stripper = PDFTextStripper()
+
+                // Extract text page by page to handle books without outline better
+                for (i in 0 until document.numberOfPages) {
+                    stripper.startPage = i + 1
+                    stripper.endPage = i + 1
+                    val pageText = stripper.getText(document) ?: ""
+                    content.add(pageText)
+                    pageWordOffsets.add(totalWordsSoFar)
+                    totalWordsSoFar += pageText.split(Regex("\\s+")).filter { it.isNotEmpty() }.size
+                }
+
+                val chapters = mutableListOf<Chapter>()
+                val outline = document.documentCatalog.documentOutline
+                if (outline != null) {
+                    val allItems = getAllOutlineItems(outline.firstChild)
+                    for (item in allItems) {
+                        try {
+                            val destination = item.destination ?: (item.action as? PDActionGoTo)?.destination
+                            val page = if (destination is PDPageDestination) {
+                                destination.page
+                            } else {
+                                null
+                            }
+
+                            if (page != null) {
+                                val pageIndex = document.pages.indexOf(page)
+                                if (pageIndex in 0 until pageWordOffsets.size) {
+                                    chapters.add(Chapter(item.title, pageWordOffsets[pageIndex]))
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Timber.e(e, "Error processing PDF outline item: ${item.title}")
+                        }
+                    }
+                }
+
+                // Ensure chapters are unique and sorted (some PDFs have multiple outline items for same page)
+                val finalChapters = chapters.distinctBy { it.startIndex }.sortedBy { it.startIndex }
+
+                Timber.d("PDF: $title ($author) with ${finalChapters.size} chapters and ${content.size} pages")
                 EBookFile(
-                    title,
-                    author,
-                    text,
-                    emptyList(),
+                    title = title,
+                    author = author,
+                    content = content,
+                    chapters = finalChapters,
                     audioPath = "",
-                    text = emptyList<TextPart>(),
+                    text = emptyList(),
                     language = "",
                     rate = 1.0f,
                     voice = "",

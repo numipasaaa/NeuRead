@@ -8,6 +8,7 @@ interface BookmarkUseCase {
     suspend fun saveBookmark()
     suspend fun deleteBookmark(bookmark: Bookmark)
     suspend fun playFromBookmark(position: Int)
+    suspend fun updateBookmarkNote(bookmark: Bookmark, note: String)
     fun getBookmarks(): Flow<List<Bookmark>>
     fun setBookPlayer(player: BookPlayer)
 }

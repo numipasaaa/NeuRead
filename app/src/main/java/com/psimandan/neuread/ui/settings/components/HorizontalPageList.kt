@@ -57,7 +57,7 @@ fun HorizontalPageListView(
                 Text(
                     text = "${pageIndex + 1}",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = if (currentPage == pageIndex) MaterialTheme.colorScheme.surface else Color.Black,
+                    color = if (currentPage == pageIndex) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(8.dp)
                 )
             }

@@ -1,100 +1,140 @@
 package com.psimandan.neuread.ui.library.components
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import com.psimandan.neuread.data.model.NeuReadBook
 import com.psimandan.neuread.ui.theme.NeuReadTheme
 import com.psimandan.neuread.voice.toLocale
 
 
 @Composable
-fun BookItemView(item: NeuReadBook, onSelect: () -> Unit) {
-    var isPressed by remember { mutableStateOf(false) }
+fun BookItemView(item: NeuReadBook, downloadProgress: Float?, onSelect: () -> Unit) {
     val uiState by item.viewState.collectAsState()
+    val scale by animateFloatAsState(targetValue = 1f, label = "scale")
 
-    Row(modifier = Modifier
-        .fillMaxWidth()
-        .padding(8.dp)
-        .background(MaterialTheme.colorScheme.primary)
-        .clickable {
-            isPressed = true
-            onSelect()
-        }) {
+    LaunchedEffect(item.id) {
+        item.lazyCalculate { }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .scale(scale)
+            .clickable { onSelect() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
         Column(
             modifier = Modifier
-                .weight(1f)
-                .padding(
-                    start = if (uiState.isCompleted) {
-                        10.dp
-                    } else {
-                        0.dp
-                    }
-                )
-                .background(MaterialTheme.colorScheme.surface)
+                .padding(16.dp)
+                .fillMaxWidth()
         ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
-            )
-            Text(
-                text = item.author,
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .padding(bottom = 8.dp)
-            )
-
-            HorizontalDivider()
-
-            if (uiState.isCalculating) {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                        .width(20.dp)
-                        .height(20.dp),
-                    color = MaterialTheme.colorScheme.primary
-                )
-            } else {
-                if (uiState.isCompleted) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Finished | ${item.language.toLocale().displayLanguage}",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+                        text = item.title,
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
-                } else {
                     Text(
-                        text = "${uiState.progressTime} of ${uiState.totalTime} | ${item.language.toLocale().displayLanguage}",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+                        text = item.author,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
+
+                if (downloadProgress != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            progress = { downloadProgress },
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 4.dp,
+                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        )
+                        Text(
+                            text = "${(downloadProgress * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.scale(0.8f)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (uiState.isCalculating) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                } else {
+                    val progressText = if (uiState.isCompleted) {
+                        "Completed"
+                    } else {
+                        "${uiState.progressTime} / ${uiState.totalTime}"
+                    }
+                    
+                    Surface(
+                        color = if (uiState.isCompleted) MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f) 
+                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = progressText,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (uiState.isCompleted) MaterialTheme.colorScheme.secondary 
+                                    else MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Text(
+                    text = item.language.toLocale().displayLanguage,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
             }
         }
     }
-
-    // Scale effect for press animation
-    Modifier
-        .scale(if (isPressed) 0.95f else 1f)
-        .animateContentSize()
-        .onGloballyPositioned { coordinates ->
-            if (isPressed) {
-                // Execute animation or other actions if required
-            }
-        }
 }
 
 @Preview(showBackground = true)
@@ -106,16 +146,19 @@ fun PreviewBookItemView() {
                 item = NeuReadBook.sampleBooks().first().apply {
                     lazyCalculate {}
                 },
+                downloadProgress = 0.5f,
                 onSelect = { println("Book selected") }
             )
             HorizontalDivider()
             BookItemView(
                 item = NeuReadBook.sampleBooks()[1],
+                downloadProgress = null,
                 onSelect = { println("Book selected") }
             )
             HorizontalDivider()
             BookItemView(
                 item = NeuReadBook.sampleBooks().last(),
+                downloadProgress = null,
                 onSelect = { println("Book selected") }
             )
         }

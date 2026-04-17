@@ -4,13 +4,19 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -73,6 +79,7 @@ fun LibraryScreenPreview() {
 @Composable
 fun LibraryScreenView(
     viewModel: LibraryScreenViewModel,
+    workManager: androidx.work.WorkManager,
     onSelect: (NeuReadBook) -> Unit,
     onSettingsClicked: () -> Unit,
     onFileSelected: (EBookFile) -> Unit
@@ -96,7 +103,7 @@ fun LibraryScreenView(
         }
 
     LaunchedEffect("init") {
-        viewModel.loadBooks()
+        viewModel.loadBooks(workManager)
     }
 
     filterBooks = if (uiState.filterText.isNotEmpty()) {
@@ -151,19 +158,32 @@ fun LibraryScreenContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Eyes-Free Library") },
+                title = {
+                    Text(
+                        "NeuRead",
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.2.sp
+                        )
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = colorScheme.surface,
+                    titleContentColor = colorScheme.onSurface,
+                    actionIconContentColor = colorScheme.primary
+                ),
                 actions = {
                     IconButton(onClick = { onEvent(LibraryScreenEvents.SettingsClicked) }) {
                         Icon(
                             Icons.Default.Settings, contentDescription = "Settings",
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
-                    Column {
+                    Box {
                         IconButton(onClick = { onEvent(LibraryScreenEvents.NewBookClicked) }) {
                             Icon(
                                 Icons.Default.Add, contentDescription = "Add",
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(28.dp)
                             )
                         }
                         DropdownMenu(
@@ -196,7 +216,10 @@ fun LibraryScreenContent(
             )
         },
         content = { padding ->
-            Column(Modifier.padding(padding)) {
+            Column(
+                Modifier
+                    .padding(padding)
+                    .background(colorScheme.background)) {
                 SearchBar(
                     text = uiState.filterText,
                     onTextChanged = { onEvent(LibraryScreenEvents.FilterWithText(it)) })
@@ -206,17 +229,21 @@ fun LibraryScreenContent(
                 } else if (filterBooks.isEmpty()) {
                     EmptyFilterLibraryView()
                 } else {
-                    LazyColumn {
-                        items(filterBooks) { book ->
-                            LaunchedEffect(book.id) { // Runs once per book when it enters composition
-                                book.lazyCalculate { /* No-op or handle completion */ }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(filterBooks, key = { it.id }) { book ->
+                            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                BookItemView(
+                                    item = book,
+                                    downloadProgress = uiState.downloadProgress[book.id],
+                                    onSelect = {
+                                        onEvent(LibraryScreenEvents.SelectBook(book))
+                                    }
+                                )
                             }
-                            BookItemView(
-                                item = book,
-                                onSelect = {
-                                    onEvent(LibraryScreenEvents.SelectBook(book))
-                                }
-                            )
                         }
                     }
                 }
@@ -227,15 +254,25 @@ fun LibraryScreenContent(
 
 @Composable
 fun EmptyLibraryView() {
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
+        Icon(
+            Icons.Default.Info,
+            contentDescription = null,
+            modifier = Modifier.size(64.dp),
+            tint = colorScheme.primary.copy(alpha = 0.5f)
+        )
+        Spacer(Modifier.height(16.dp))
         Text(
             "Hit the plus button to open your first book and enjoy eyes-free reading!",
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyLarge,
+            color = colorScheme.onSurfaceVariant
         )
     }
 }
@@ -264,6 +301,7 @@ fun SearchBar(text: String, onTextChanged: (String) -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
+        shape = RoundedCornerShape(28.dp),
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
         trailingIcon = {
             if (text.isNotEmpty()) {

@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -86,17 +87,22 @@ class PlayerService : Service() {
         initMediaSession(this)
         createNotificationChannel()
 
+        // Start with a basic notification to satisfy Android 14+ foreground service requirements
+        startPlaceholderForeground()
+
         // Observe state changes instead of callback
         serviceScope.launch {
             playerStateRepository.getPlaybackState().collect { state ->
                 updatePlaybackState(state.position, state.duration, state.isPlaying)
+                updateNotification(state.isPlaying)
             }
         }
-
-        updateNotification()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Ensure foreground starts immediately on every startCommand to prevent ANR/Crash on Android 12+
+        startPlaceholderForeground()
+
         when (intent?.action) {
             ACTION_PLAY -> mediaSessionCallback.onPlay()
             ACTION_PAUSE -> mediaSessionCallback.onPause()
@@ -199,40 +205,69 @@ class PlayerService : Service() {
         mediaSession.isActive = true // Ensure it's active!
     }
 
-    private fun updateNotification() {
+    private fun updateNotification(isPlaying: Boolean = true) {
         serviceScope.launch {
             val book = playerStateRepository.getCurrentBook().first()
-            book?.let {
-                val playIntent = getServiceIntent(ACTION_PLAY, 0)
-                val pauseIntent = getServiceIntent(ACTION_PAUSE, 1)
-                val ffIntent = getServiceIntent(ACTION_FF, 2)
-                val frIntent = getServiceIntent(ACTION_FR, 3)
-//                val favoriteIntent = getServiceIntent(ACTION_FAVORITE, 4)
-
-                val builder = NotificationCompat.Builder(this@PlayerService, CHANNEL_ID)
-                    .setSmallIcon(R.drawable.ic_launcher_foreground)
-                    .setContentTitle(it.title)
-                    .setContentText(it.author)
-                    .setUsesChronometer(true)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
-                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                    .setOngoing(true) // Keeps the notification visible
-                    .setStyle(
-                        androidx.media.app.NotificationCompat.MediaStyle()
-                            .setMediaSession(mediaSession.sessionToken)
-                            .setShowActionsInCompactView(0, 1, 2, 3, 4) // Shows Play/Pause, FF, FR
-                    )
-
-                builder.addAction(R.drawable.ic_play, "Play", playIntent)
-                builder.addAction(R.drawable.ic_pause, "Pause", pauseIntent)
-
-//                builder.addAction(R.drawable.ic_bookmark, "Favorite", favoriteIntent)
-                builder.addAction(R.drawable.ic_ff, "Fast Forward", ffIntent)
-                builder.addAction(R.drawable.ic_fr, "Rewind", frIntent)
-
-                startForeground(NOTIFICATION_ID, builder.build())
+            val playPauseAction = if (isPlaying) {
+                NotificationCompat.Action(R.drawable.ic_pause, "Pause", getServiceIntent(ACTION_PAUSE, 1))
+            } else {
+                NotificationCompat.Action(R.drawable.ic_play, "Play", getServiceIntent(ACTION_PLAY, 0))
             }
+
+            val ffAction = NotificationCompat.Action(R.drawable.ic_ff, "Fast Forward", getServiceIntent(ACTION_FF, 2))
+            val frAction = NotificationCompat.Action(R.drawable.ic_fr, "Rewind", getServiceIntent(ACTION_FR, 3))
+
+            val builder = NotificationCompat.Builder(this@PlayerService, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setContentTitle(book?.title ?: "Unknown")
+                .setContentText(book?.author ?: "Unknown")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setOngoing(isPlaying)
+                .setStyle(
+                    androidx.media.app.NotificationCompat.MediaStyle()
+                        .setMediaSession(mediaSession.sessionToken)
+                        .setShowActionsInCompactView(0, 1, 2)
+                )
+                .addAction(frAction)
+                .addAction(playPauseAction)
+                .addAction(ffAction)
+
+            if (isPlaying) {
+                startForegroundCompat(NOTIFICATION_ID, builder.build())
+            } else {
+                stopForeground(STOP_FOREGROUND_DETACH)
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.notify(NOTIFICATION_ID, builder.build())
+            }
+        }
+    }
+
+    private fun startPlaceholderForeground() {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = notificationManager.getNotificationChannel(CHANNEL_ID)
+            if (channel == null) {
+                createNotificationChannel()
+            }
+        }
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText("Preparing playback...")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+
+        startForegroundCompat(NOTIFICATION_ID, builder.build())
+    }
+
+    private fun startForegroundCompat(notificationId: Int, notification: android.app.Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        } else {
+            startForeground(notificationId, notification)
         }
     }
 

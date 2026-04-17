@@ -54,8 +54,11 @@ class NavigationViewModel @Inject constructor() : ViewModel() {
                         is NavigationCommand.Navigate -> navController.navigate(command.screen.route)
                         is NavigationCommand.Back -> navController.popBackStack()
                         is NavigationCommand.ResetAndNavigate -> {
-                            navController.popBackStack(navController.graph.startDestinationId, inclusive = false)
-                            navController.navigate(command.screen.route)
+                            navController.navigate(command.screen.route) {
+                                popUpTo(navController.graph.startDestinationId) {
+                                    inclusive = true
+                                }
+                            }
                         }
                     }
                 }

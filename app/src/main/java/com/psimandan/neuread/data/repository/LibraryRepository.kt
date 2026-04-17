@@ -17,6 +17,7 @@ interface LibraryRepository {
     suspend fun selectBook(bookId: String)
     suspend fun getSelectedBook(): NeuReadBook?
     suspend fun unselectBook()
+    suspend fun getBookById(bookId: String): NeuReadBook?
 }
 
 @Singleton
@@ -45,4 +46,5 @@ class LibraryRepositoryImpl @Inject constructor(
     override suspend fun getSelectedBook(): NeuReadBook? = diskDataSource.getSelectedBook()
     override suspend fun unselectBook() = diskDataSource.unselectBook()
 
+    override suspend fun getBookById(bookId: String): NeuReadBook? = diskDataSource.getBookById(bookId)
 }

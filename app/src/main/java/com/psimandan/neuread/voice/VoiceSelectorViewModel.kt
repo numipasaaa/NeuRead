@@ -73,11 +73,11 @@ class VoiceSelectorViewModel @Inject constructor(
     private val prefsStore: PrefsStore
 ) : ViewModel() {
 
-    private val _availableVoices = MutableStateFlow<Set<NeuReadVoice>>(emptySet())
-    val availableVoices: StateFlow<Set<NeuReadVoice>> = _availableVoices
+    private val _availableVoices = MutableStateFlow<List<NeuReadVoice>>(emptyList())
+    val availableVoices: StateFlow<List<NeuReadVoice>> = _availableVoices
 
-    private val _availableLocales = MutableStateFlow<Set<Locale>>(emptySet())
-    val availableLocales: StateFlow<Set<Locale>> = _availableLocales
+    private val _availableLocales = MutableStateFlow<List<Locale>>(emptyList())
+    val availableLocales: StateFlow<List<Locale>> = _availableLocales
 
     private val _clonedVoices = MutableStateFlow<List<NeuReadVoice>>(emptyList())
     val clonedVoices: StateFlow<List<NeuReadVoice>> = _clonedVoices
@@ -114,8 +114,8 @@ class VoiceSelectorViewModel @Inject constructor(
                 fetchedVoices to fetchedLocales
             }
             
-            _availableLocales.value = locales + Locale.US
-            _availableVoices.value = voices
+            _availableLocales.value = (locales + Locale.US).toList()
+            _availableVoices.value = voices.toList()
 
             Timber.d("loadVoices=>${System.currentTimeMillis() - start}")
         }

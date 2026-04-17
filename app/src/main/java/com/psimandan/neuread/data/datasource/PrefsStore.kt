@@ -9,7 +9,8 @@ data class ClonedVoice(
     val name: String,
     val language: String = "en_US",
     val referenceText: String,
-    val codes: List<Int>
+    val codes: List<Int>,
+    val samplePath: String? = null
 )
 
 interface PrefsStore {
@@ -20,4 +21,16 @@ interface PrefsStore {
     suspend fun updateClonedVoice(voice: ClonedVoice)
     suspend fun deleteClonedVoice(voiceId: String)
     fun getClonedVoices(): Flow<List<ClonedVoice>>
+
+    suspend fun saveAccentColor(color: Int)
+    fun getAccentColor(): Flow<Int?>
+
+    suspend fun saveThemeMode(mode: Int)
+    fun getThemeMode(): Flow<Int>
+
+    suspend fun saveDyslexicFontEnabled(enabled: Boolean)
+    fun isDyslexicFontEnabled(): Flow<Boolean>
+
+    suspend fun saveHighlightingEnabled(enabled: Boolean)
+    fun isHighlightingEnabled(): Flow<Boolean>
 }

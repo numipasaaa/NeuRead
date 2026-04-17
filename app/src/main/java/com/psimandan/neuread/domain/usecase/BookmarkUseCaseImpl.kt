@@ -26,6 +26,10 @@ class BookmarkUseCaseImpl @Inject constructor(
     override suspend fun playFromBookmark(position: Int) {
         bookPlayer?.onPlayFromBookmark(position)
     }
+
+    override suspend fun updateBookmarkNote(bookmark: Bookmark, note: String) {
+        bookPlayer?.onUpdateBookmarkNote(bookmark, note)
+    }
     
     override fun getBookmarks(): Flow<List<Bookmark>> {
         return playerStateRepository.getCurrentBook().map { book ->

@@ -3,6 +3,7 @@ package com.psimandan.neuread
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
@@ -14,9 +15,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import com.psimandan.neuread.ui.navigation.NavigationViewModel
 import com.psimandan.neuread.ui.about.AboutScreen
 import com.psimandan.neuread.ui.library.LibraryScreenView
@@ -27,16 +33,25 @@ import com.psimandan.neuread.ui.player.PlayerViewModel
 import com.psimandan.neuread.ui.settings.BookSettingsScreenView
 import com.psimandan.neuread.ui.settings.BookSettingsViewModel
 import com.psimandan.neuread.ui.settings.SettingsScreenView
+import com.psimandan.neuread.ui.settings.SettingsViewModel
 import com.psimandan.neuread.ui.theme.NeuReadTheme
 import com.psimandan.neuread.ui.voicecloning.VoiceCloningRecordingScreenView
 import com.psimandan.neuread.ui.voicecloning.VoiceCloningScreenView
 import com.psimandan.neuread.voice.VoiceSelectorViewModel
+import com.psimandan.neuread.ui.player.components.MiniPlayerView
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.filterNotNull
 import androidx.core.net.toUri
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.ui.unit.dp
 
 
 sealed class Screen(val route: String) {
@@ -56,6 +71,7 @@ class MainActivity : ComponentActivity() {
     private val libraryViewModel by viewModels<LibraryScreenViewModel>()
     private val playerViewModel by viewModels<PlayerViewModel>()
     private val bookSettingsViewModel by viewModels<BookSettingsViewModel>()
+    private val settingsViewModel by viewModels<SettingsViewModel>()
     private val voiceSelectorViewModel by viewModels<VoiceSelectorViewModel>()
     private val voiceCloningViewModel by viewModels<com.psimandan.neuread.ui.voicecloning.VoiceCloningViewModel>()
 
@@ -64,6 +80,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
 
         super.onCreate(savedInstanceState)
+        requestNotificationPermission()
         setTheme(R.style.Theme_NeuRead)
         // Enable edge-to-edge display
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -74,103 +91,166 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val navController = rememberNavController()
-            // Observe navigation events, life cycle aware
-            LaunchedEffect(Unit) {
-                snapshotFlow { navController.currentBackStackEntry }
-                    .filterNotNull()
-                    .collect {
-                        navigationViewModel.onNavigationEvents(navController)
-                    }
+            // Observe navigation events
+            LaunchedEffect(navController) {
+                navigationViewModel.onNavigationEvents(navController)
             }
             LaunchedEffect("init") {
                 voiceSelectorViewModel.loadVoices()
-                libraryViewModel.loadBooks()
             }
-            NeuReadTheme {
-                NavHost(navController, startDestination = Screen.Splash.route) {
-                    composable(Screen.Splash.route) {
-                        SplashScreenView(onNavigate = { screen ->
-                            navigationViewModel.navigateTo(screen)
-                        }, libraryViewModel)
-                    }
-                    composable(Screen.Home.route) {
-                        LibraryScreenView(
-                            viewModel = libraryViewModel,
-                            onSelect = { book ->
-                                libraryViewModel.onSelectBook(book)
-                                navigationViewModel.navigateTo(Screen.Player)
-                            },
-                            onSettingsClicked = {
-                                navigationViewModel.navigateTo(Screen.Settings)
-                            },
-                            onFileSelected = {
-                                bookSettingsViewModel.createANewBook(it)
-                                navigationViewModel.navigateTo(Screen.BookSettings)
-                            }
-                        )
-                    }
-                    composable(Screen.Settings.route) {
-                        SettingsScreenView(
-                            onNavigateBack = { navigationViewModel.popBack() },
-                            onAboutClicked = { navigationViewModel.navigateTo(Screen.About) },
-                            onVoiceCloningClicked = { navigationViewModel.navigateTo(Screen.VoiceCloning) }
-                        )
-                    }
-                    composable(Screen.BookSettings.route) {
-                        BookSettingsScreenView(
-                            onBookDeleted = {
-                                navigationViewModel.resetAndNavigateTo(Screen.Home)
-                            },
-                            onNavigateBack = { book ->
-                                if (book == null) {//open file were canceled
-                                    navigationViewModel.resetAndNavigateTo(Screen.Home)
-                                } else {
-                                    libraryViewModel.onSelectBook(book)
-                                    if (navController.graph.nodes.isEmpty) {
-                                        navigationViewModel.resetAndNavigateTo(Screen.Player)
-                                    } else {
-                                        navigationViewModel.popBack()
-                                    }
-                                }
-                            },
-                            viewModel = bookSettingsViewModel,
-                            voiceSelector = voiceSelectorViewModel
-                        )
-                    }
-                    composable(Screen.About.route) {
-                        AboutScreen {
-                            navigationViewModel.popBack()
+
+            val accentColorInt by settingsViewModel.accentColor.collectAsState()
+            val themeMode by settingsViewModel.themeMode.collectAsState()
+
+            val accentColor = accentColorInt?.let { Color(it) }
+            val darkTheme = when (themeMode) {
+                1 -> false // Light
+                2 -> true  // Dark
+                else -> androidx.compose.foundation.isSystemInDarkTheme() // Auto
+            }
+
+            NeuReadTheme(accentColor = accentColor, darkTheme = darkTheme) {
+                val currentBackStackEntry by navController.currentBackStackEntryAsState()
+                val currentRoute = currentBackStackEntry?.destination?.route
+                val showMiniPlayer = currentRoute != Screen.Player.route &&
+                        currentRoute != Screen.BookSettings.route &&
+                        currentRoute != Screen.Splash.route
+
+                val playerUiState by playerViewModel.viewState.collectAsState()
+
+                Scaffold(
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                    bottomBar = {
+                        if (showMiniPlayer && playerViewModel.book != null) {
+                            MiniPlayerView(
+                                book = playerViewModel.book,
+                                uiState = playerUiState,
+                                onPlayPauseClick = {
+                                    if (playerUiState.isSpeaking) playerViewModel.onPause()
+                                    else playerViewModel.onPlay()
+                                },
+                                onClick = {
+                                    navigationViewModel.navigateTo(Screen.Player)
+                                },
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
                         }
                     }
-                    composable(Screen.VoiceCloning.route) {
-                        VoiceCloningScreenView(
-                            viewModel = voiceSelectorViewModel,
-                            onNavigateBack = { navigationViewModel.popBack() },
-                            onAddVoiceClicked = { navigationViewModel.navigateTo(Screen.VoiceCloningRecording) }
-                        )
-                    }
-                    composable(Screen.VoiceCloningRecording.route) {
-                        VoiceCloningRecordingScreenView(
-                            viewModel = voiceCloningViewModel,
-                            onNavigateBack = { navigationViewModel.popBack() }
-                        )
-                    }
-                    composable(Screen.Player.route) {
-                        PlayerScreenView(
-                            onBackToLibrary = {
-                                libraryViewModel.onUnselectBook()
-                                if (navController.graph.nodes.isEmpty) {
-                                    navigationViewModel.resetAndNavigateTo(Screen.Home)
-                                } else {
-                                    navigationViewModel.popBack()
+                ) { padding ->
+                    NavHost(
+                        navController = navController,
+                        startDestination = Screen.Splash.route,
+                        modifier = Modifier.padding(bottom = padding.calculateBottomPadding()),
+                        enterTransition = {
+                            slideIntoContainer(
+                                AnimatedContentTransitionScope.SlideDirection.Start,
+                                animationSpec = tween(400)
+                            ) + fadeIn(animationSpec = tween(400))
+                        },
+                        exitTransition = {
+                            slideOutOfContainer(
+                                AnimatedContentTransitionScope.SlideDirection.Start,
+                                animationSpec = tween(400)
+                            ) + fadeOut(animationSpec = tween(400))
+                        },
+                        popEnterTransition = {
+                            slideIntoContainer(
+                                AnimatedContentTransitionScope.SlideDirection.End,
+                                animationSpec = tween(400)
+                            ) + fadeIn(animationSpec = tween(400))
+                        },
+                        popExitTransition = {
+                            slideOutOfContainer(
+                                AnimatedContentTransitionScope.SlideDirection.End,
+                                animationSpec = tween(400)
+                            ) + fadeOut(animationSpec = tween(400))
+                        }
+                    ) {
+                        composable(Screen.Splash.route,
+                            enterTransition = { fadeIn(tween(500)) },
+                            exitTransition = { fadeOut(tween(500)) }
+                        ) {
+                            SplashScreenView(onNavigate = { screen ->
+                                navigationViewModel.resetAndNavigateTo(screen)
+                            }, libraryViewModel)
+                        }
+                        composable(Screen.Home.route) {
+                            LibraryScreenView(
+                                viewModel = libraryViewModel,
+                                workManager = androidx.work.WorkManager.getInstance(this@MainActivity),
+                                onSelect = { book ->
+                                    libraryViewModel.onSelectBook(book)
+                                    navigationViewModel.navigateTo(Screen.Player)
+                                },
+                                onSettingsClicked = {
+                                    navigationViewModel.navigateTo(Screen.Settings)
+                                },
+                                onFileSelected = {
+                                    bookSettingsViewModel.createANewBook(it)
+                                    navigationViewModel.navigateTo(Screen.BookSettings)
                                 }
-                            }, onSettings = {
-                                navigationViewModel.navigateTo(Screen.BookSettings)
-                            },
-                            viewModel = playerViewModel,
-                            onPlayback = {
+                            )
+                        }
+                        composable(Screen.Settings.route) {
+                            SettingsScreenView(
+                                viewModel = settingsViewModel,
+                                onNavigateBack = { navigationViewModel.popBack() },
+                                onAboutClicked = { navigationViewModel.navigateTo(Screen.About) },
+                                onVoiceCloningClicked = { navigationViewModel.navigateTo(Screen.VoiceCloning) }
+                            )
+                        }
+                        composable(Screen.BookSettings.route) {
+                            BookSettingsScreenView(
+                                onBookDeleted = {
+                                    navigationViewModel.resetAndNavigateTo(Screen.Home)
+                                },
+                                onNavigateBack = { book ->
+                                    if (book == null) { // creation canceled
+                                        navigationViewModel.resetAndNavigateTo(Screen.Home)
+                                    } else {
+                                        libraryViewModel.onSelectBook(book)
+                                        if (navController.previousBackStackEntry == null) {
+                                            navigationViewModel.resetAndNavigateTo(Screen.Player)
+                                        } else {
+                                            navigationViewModel.popBack()
+                                        }
+                                    }
+                                },
+                                viewModel = bookSettingsViewModel,
+                                voiceSelector = voiceSelectorViewModel
+                            )
+                        }
+                        composable(Screen.About.route) {
+                            AboutScreen {
+                                navigationViewModel.popBack()
                             }
-                        )
+                        }
+                        composable(Screen.VoiceCloning.route) {
+                            VoiceCloningScreenView(
+                                viewModel = voiceSelectorViewModel,
+                                onNavigateBack = { navigationViewModel.popBack() },
+                                onAddVoiceClicked = { navigationViewModel.navigateTo(Screen.VoiceCloningRecording) }
+                            )
+                        }
+                        composable(Screen.VoiceCloningRecording.route) {
+                            VoiceCloningRecordingScreenView(
+                                viewModel = voiceCloningViewModel,
+                                voiceSelectorViewModel = voiceSelectorViewModel,
+                                onNavigateBack = { navigationViewModel.popBack() }
+                            )
+                        }
+                        composable(Screen.Player.route) {
+                            PlayerScreenView(
+                                onBackToLibrary = {
+                                    navigationViewModel.resetAndNavigateTo(Screen.Home)
+                                }, onNavigateToSettings = { book ->
+                                    navigationViewModel.navigateTo(Screen.BookSettings)
+                                },
+                                viewModel = playerViewModel,
+                                playbackProgressCallBack = {
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -218,6 +298,14 @@ class MainActivity : ComponentActivity() {
 
         val shareIntent = Intent.createChooser(sendIntent, "NeuRead Support")
         startActivity(shareIntent)
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
     }
 
     private fun prepareBugReport(name: String = "NeuRead"): String {

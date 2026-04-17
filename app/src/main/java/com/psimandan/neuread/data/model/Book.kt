@@ -13,7 +13,8 @@ import java.util.*
 @Serializable
 data class Bookmark(
     val position: Int,
-    var title: String = ""
+    var title: String = "",
+    var note: String? = null
 )
 
 @Serializable

@@ -23,11 +23,19 @@ class VoiceRepository @Inject constructor(
         // 1. Fetch the normal offline/native voices from the device
         val nativeVoices = voiceDataSource.loadVoices()
 
-        // 2. Create our custom Network Voice for the Python API
-        val neuTtsVoice = Voice(
-            "NeuTTS (High Quality AI)",
-            Locale("en"),
-            400,
+        val joVoice = Voice(
+            "Jo (AI)",
+            Locale.US,
+            405,
+            200,
+            true,
+            null
+        ).toNeuReadVoice()
+
+        val daveVoice = Voice(
+            "Dave (AI)",
+            Locale.US,
+            406,
             200,
             true,
             null
@@ -47,20 +55,20 @@ class VoiceRepository @Inject constructor(
         }
 
         // 4. Combine them and save to state
-        availableVoices = nativeVoices + neuTtsVoice + clonedVoices.toSet()
+        availableVoices = nativeVoices + joVoice + daveVoice + clonedVoices.toSet()
         return availableVoices
     }
 
     fun getAvailableLocales(): Set<Locale> {
         // Update this to read from our combined list rather than just the native data source,
-        // ensuring the language tab in the UI shows up even if NeuTTS is the ONLY voice for that language.
+        // ensuring the language tab in the UI shows up even if a network voice is the ONLY voice for that language.
         return availableVoices.map { it.locale }.toSet()
     }
 
     fun nameToVoice(name: String, language: String): NeuReadVoice {
-        // 1. Try to find the voice by name only first if it's a special voice (cloned or NeuTTS)
+        // 1. Try to find the voice by name only first if it's a special voice (cloned or network AI)
         val specialVoice = availableVoices.find { 
-            it.name == name && (it.name.contains("NeuTTS") || it.features?.contains("cloned") == true || it.requiresNetworkConnection)
+            it.name == name && (it.features?.contains("cloned") == true || it.requiresNetworkConnection)
         }
         if (specialVoice != null) return specialVoice
 

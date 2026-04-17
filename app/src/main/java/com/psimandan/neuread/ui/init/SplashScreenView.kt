@@ -77,24 +77,20 @@ fun SplashScreenContent() {
     }
 }
 
-@OptIn(DelicateCoroutinesApi::class)
 @Composable
 fun SplashScreenView(
     onNavigate: (Screen) -> Unit,
     libraryViewModel: LibraryScreenViewModel
 ) {
-    val selectedBook = libraryViewModel.selectedBook.collectAsState()
-    LaunchedEffect(selectedBook) {
-        val deferred = GlobalScope.async(Dispatchers.IO) {
-            Thread.sleep(1000)
-        }
-        GlobalScope.launch(Dispatchers.Main) {
-            deferred.await()
-            if (selectedBook.value == null) {
-                onNavigate(Screen.Home)
-            } else {
-                onNavigate(Screen.Player)
-            }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        libraryViewModel.loadBooks(androidx.work.WorkManager.getInstance(context))
+        delay(1000)
+        val selectedBook = libraryViewModel.selectedBook.value
+        if (selectedBook == null) {
+            onNavigate(Screen.Home)
+        } else {
+            onNavigate(Screen.Player)
         }
     }
     SplashScreenContent()

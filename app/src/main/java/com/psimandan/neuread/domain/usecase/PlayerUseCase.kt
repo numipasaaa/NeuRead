@@ -13,5 +13,6 @@ interface PlayerUseCase {
     fun getCurrentPosition(): Flow<Long>
     fun getPlaybackState(): Flow<PlaybackState>
     fun setBookPlayer(player: BookPlayer)
+    fun getBookPlayer(): BookPlayer?
     fun getCurrentTimeElapsed(): Long
 }

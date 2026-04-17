@@ -1,5 +1,14 @@
 package com.psimandan.neuread.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,8 +28,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -33,7 +44,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.ui.text.style.TextOverflow
+import com.psimandan.neuread.ui.theme.OpenDyslexic
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -43,6 +59,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
@@ -104,6 +121,8 @@ fun BookSettingsPreviewBook() {
             availableVoices = listOf(),
             selectedVoice = NeuReadVoice("Voice 1", "en"),
             selectedRate = 1f,
+            dyslexicFontEnabled = false,
+            highlightingEnabled = true,
             onEvent = {}
         )
     }
@@ -150,6 +169,8 @@ fun BookSettingsPreviewAudiobook() {
             availableVoices = listOf(),
             selectedVoice = NeuReadVoice("Voice 1", "en"),
             selectedRate = 1f,
+            dyslexicFontEnabled = false,
+            highlightingEnabled = true,
             onEvent = {}
         )
     }
@@ -163,7 +184,6 @@ fun BookSettingsScreenView(
     voiceSelector: VoiceSelectorViewModel
 ) {
     val voices by voiceSelector.availableVoices.collectAsState()
-    val clonedVoices by voiceSelector.clonedVoices.collectAsState()
     val locales by voiceSelector.availableLocales.collectAsState()
     val recentLocales = viewModel.recentSelectionsL.values
 
@@ -180,6 +200,7 @@ fun BookSettingsScreenView(
 
     LaunchedEffect(Unit) {
         viewModel.setUpBook()
+        viewModel.loadSettings()
     }
 
     BookSettingsScreenContent(
@@ -192,11 +213,18 @@ fun BookSettingsScreenView(
         selectedLanguage = selectedLanguage,
         recentLocales = recentLocales.toList(),
         availableLocales = locales.toList(),
-        availableVoices = voices.toList() + clonedVoices.toList(),
+        availableVoices = voices.toList(),
         selectedRate = bookState.voiceRate,
         selectedVoice = selectedVoice,
+        dyslexicFontEnabled = viewState.dyslexicFontEnabled,
+        highlightingEnabled = viewState.highlightingEnabled,
         onEvent = { it.onEvent(model = viewModel, onNavigateBack = onNavigateBack) }
     )
+
+    androidx.activity.compose.BackHandler {
+        BookSettingsEvent.Cancel.onEvent(model = viewModel, onNavigateBack = onNavigateBack)
+    }
+
     val pinCode = remember { mutableStateOf("") }
     if (viewState.showDeleteDialog) {
         ConfirmDeleteDialog(
@@ -211,10 +239,10 @@ fun BookSettingsScreenView(
                 }
             },
             onDismissRequest = {
+                viewModel.onShowDelete(false)
             }
         )
     }
-
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -232,40 +260,29 @@ fun BookSettingsScreenContent(
     selectedVoice: NeuReadVoice,
     selectedRate: Float,
     selectedLanguage: Locale,
+    dyslexicFontEnabled: Boolean,
+    highlightingEnabled: Boolean,
     onEvent: (BookSettingsEvent) -> Unit
 ) {
     Box(Modifier.background(colorScheme.background)) {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = { },
-                    actions = {
-                        TextButton(onClick = { onEvent(BookSettingsEvent.Cancel) }) {
-                            Text(
-                                "Cancel",
-                                style = MaterialTheme.typography.titleLarge,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier
-                                    .padding(16.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.weight(1F))
+                CenterAlignedTopAppBar(
+                    title = {
                         Text(
-                            "Settings",
-                            style = MaterialTheme.typography.titleLarge
+                            "Book Settings",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                         )
-                        Spacer(modifier = Modifier.weight(1F))
-                        TextButton(onClick = { onEvent(BookSettingsEvent.Save) }) {
-                            Text(
-                                "Save",
-                                style = MaterialTheme.typography.titleLarge,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier
-                                    .padding(16.dp)
-                            )
+                    },
+                    navigationIcon = {
+                        TextButton(onClick = { onEvent(BookSettingsEvent.Cancel) }) {
+                            Text("Cancel", color = colorScheme.primary)
                         }
-
-
+                    },
+                    actions = {
+                        TextButton(onClick = { onEvent(BookSettingsEvent.Save) }) {
+                            Text("Save", color = colorScheme.primary, fontWeight = FontWeight.Bold)
+                        }
                     }
                 )
             },
@@ -286,7 +303,7 @@ fun BookSettingsScreenContent(
                         onAuthorChanged = { onEvent(BookSettingsEvent.AuthorChanged(it)) }
                     )
                     Spacer(Modifier.height(normalSpace))
-                    HorizontalDivider(color = colorScheme.onSurface)
+                    HorizontalDivider(color = colorScheme.outlineVariant)
                     Spacer(Modifier.height(normalSpace))
                     Column(
                         modifier = Modifier
@@ -337,7 +354,12 @@ fun BookSettingsScreenContent(
                             textAlign = TextAlign.Center
                         )
                         Spacer(Modifier.height(smallSpace))
-                        Row {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateContentSize()
+                        ) {
                             if (bookState.book is Book) {
                                 NiceButton(
                                     title = selectedVoice.name,
@@ -345,7 +367,6 @@ fun BookSettingsScreenContent(
                                         showVoiceDialog.value = true
                                     },
                                 )
-                                Spacer(Modifier.width(smallSpace))
                             } else if (bookState.book is AudioBook) {
                                 val book = bookState.book
                                 Text(
@@ -356,6 +377,9 @@ fun BookSettingsScreenContent(
                                     modifier = Modifier.padding(top = smallSpace)
                                 )
                             }
+
+                            Spacer(Modifier.weight(1f))
+
                             IconButton(onClick = {
                                 onEvent(
                                     if (bookState.book is Book) {
@@ -376,41 +400,66 @@ fun BookSettingsScreenContent(
                                     modifier = Modifier.size(44.dp)
                                 )
                             }
-                            if (bookState.book is Book && selectedVoice.requiresNetworkConnection) {
+                            if (bookState.book is Book) {
+                                AnimatedVisibility(
+                                    visible = downloadProgress != null,
+                                    enter = fadeIn() + scaleIn(),
+                                    exit = fadeOut() + scaleOut()
+                                ) {
+                                    IconButton(onClick = { onEvent(BookSettingsEvent.CancelDownload) }) {
+                                        Box(
+                                            modifier = Modifier.size(44.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            val animatedProgress by animateFloatAsState(
+                                                targetValue = downloadProgress ?: 0f,
+                                                animationSpec = spring(stiffness = Spring.StiffnessLow),
+                                                label = "downloadProgress"
+                                            )
+                                            CircularProgressIndicator(
+                                                progress = { animatedProgress },
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(4.dp),
+                                                color = colorScheme.primary,
+                                                strokeWidth = 3.dp,
+                                                trackColor = colorScheme.surfaceVariant
+                                            )
+                                            Text(
+                                                text = "${(animatedProgress * 100).toInt()}%",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = colorScheme.onSurface,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.scale(0.8f)
+                                            )
+                                        }
+                                    }
+                                }
+                                if (downloadProgress == null && selectedVoice.requiresNetworkConnection) {
+                                    IconButton(onClick = {
+                                        onEvent(BookSettingsEvent.DownloadAudio)
+                                    }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = "download audio",
+                                            tint = colorScheme.primary,
+                                            modifier = Modifier.size(44.dp)
+                                        )
+                                    }
+                                }
+                            } else if (bookState.book is AudioBook) {
                                 IconButton(onClick = {
-                                    onEvent(BookSettingsEvent.DownloadAudio)
+                                    onEvent(BookSettingsEvent.DeleteAudio)
                                 }) {
                                     Icon(
-                                        imageVector = Icons.Default.Download,
-                                        contentDescription = "download audio",
-                                        tint = colorScheme.primary,
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "delete audio",
+                                        tint = colorScheme.error,
                                         modifier = Modifier.size(44.dp)
                                     )
                                 }
                             }
 
-                        }
-                        Spacer(Modifier.height(normalSpace))
-                        HorizontalDivider(color = colorScheme.onSurface)
-                        if (bookState.book is AudioBook) {
-                            Spacer(Modifier.height(normalSpace))
-                            val book = bookState.book
-                            Text(
-                                text = "Book source",
-                                style = scTypography.titleMedium,
-                                color = colorScheme.onSurface,
-                                textAlign = TextAlign.Center
-                            )
-                            Spacer(Modifier.height(smallSpace))
-                            Text(
-                                text = book.bookSource,
-                                style = scTypography.titleLarge,
-                                color = colorScheme.onSurface,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(top = smallSpace)
-                            )
-                            Spacer(Modifier.height(normalSpace))
-                            HorizontalDivider(color = colorScheme.onSurface)
                         }
                         Spacer(Modifier.height(normalSpace))
                         if (bookState.book is Book) {
@@ -433,11 +482,94 @@ fun BookSettingsScreenContent(
                             totalPages = contextText.size,
                             onPageChanged = { onEvent(BookSettingsEvent.PageSelected(it)) }
                         )
+
+                        Spacer(Modifier.height(normalSpace))
+
+                        if (contextText.isNotEmpty()) {
+                            Text(
+                                text = "Font Preview",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = colorScheme.onSurface,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .padding(normalSpace)
+                            ) {
+                                Text(
+                                    text = contextText[selectedPage],
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontFamily = if (dyslexicFontEnabled) OpenDyslexic else FontFamily.Default
+                                    ),
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(normalSpace))
+                        HorizontalDivider(color = colorScheme.outlineVariant)
+                        Spacer(Modifier.height(normalSpace))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onEvent(BookSettingsEvent.ToggleDyslexicFont(!dyslexicFontEnabled)) },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Dyslexia Friendly Font",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Use OpenDyslexic font for book text",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = dyslexicFontEnabled,
+                                onCheckedChange = { onEvent(BookSettingsEvent.ToggleDyslexicFont(it)) }
+                            )
+                        }
+
+                        Spacer(Modifier.height(normalSpace))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onEvent(BookSettingsEvent.ToggleHighlighting(!highlightingEnabled)) },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Word Highlighting",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Highlight words during playback",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = highlightingEnabled,
+                                onCheckedChange = { onEvent(BookSettingsEvent.ToggleHighlighting(it)) }
+                            )
+                        }
                     }
                     Spacer(Modifier.height(normalSpace))
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    Spacer(Modifier.height(normalSpace))
-                    NiceButtonLarge(title = "Delete This Book", color = Color.Red) {
+                    NiceButtonLarge(title = "Delete This Book", color = colorScheme.error) {
                         onEvent(BookSettingsEvent.DeleteClicked)
                     }
                     if (showLanguageDialog.value) {
@@ -475,30 +607,6 @@ fun BookSettingsScreenContent(
                 }
             }
         )
-        if (loading) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color(0xcF7f7f7f))
-            ) {
-                Column(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    CircularProgressIndicator(
-                        color = colorScheme.primary
-                    )
-                    downloadProgress?.let { progress ->
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "Synthesizing audio: ${(progress * 100).toInt()}%",
-                            color = Color.White,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                }
-            }
-        }
         if (showVoiceError) {
             ErrorMessageDialog(
                 title = "Voice Error",
@@ -528,15 +636,14 @@ fun BookTitleSection(
             placeholder = {
                 Text(
                     text = "Input title",
-                    color = Color.LightGray
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
             },
             singleLine = true,
-            textStyle = TextStyle(
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Normal,
-                fontSize = 22.sp,
-                color = colorScheme.onSurface
+            textStyle = MaterialTheme.typography.titleLarge.copy(
+                color = colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold
             ),
             onValueChange = onTitleChanged,
             keyboardOptions = KeyboardOptions(
@@ -545,9 +652,11 @@ fun BookTitleSection(
             ),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             colors = TextFieldDefaults.outlinedTextFieldColors(
-                containerColor = colorScheme.surface,
-                unfocusedBorderColor = colorScheme.surface
+                focusedBorderColor = colorScheme.primary,
+                unfocusedBorderColor = colorScheme.outline,
+                containerColor = colorScheme.surfaceVariant.copy(alpha = 0.3f)
             ),
+            shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 if (title.isNotEmpty()) {
@@ -555,7 +664,7 @@ fun BookTitleSection(
                         Icon(
                             imageVector = Icons.Default.Clear,
                             contentDescription = "Clear text",
-                            tint = Color.Gray
+                            tint = colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -567,14 +676,12 @@ fun BookTitleSection(
             placeholder = {
                 Text(
                     text = "Input author",
-                    color = Color.LightGray
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
             },
             singleLine = true,
-            textStyle = TextStyle(
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Normal,
-                fontSize = 22.sp,
+            textStyle = MaterialTheme.typography.titleMedium.copy(
                 color = colorScheme.onSurface
             ),
             onValueChange = onAuthorChanged,
@@ -584,17 +691,19 @@ fun BookTitleSection(
             ),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             colors = TextFieldDefaults.outlinedTextFieldColors(
-                containerColor = colorScheme.surface,
-                unfocusedBorderColor = colorScheme.surface
+                focusedBorderColor = colorScheme.primary,
+                unfocusedBorderColor = colorScheme.outline,
+                containerColor = colorScheme.surfaceVariant.copy(alpha = 0.3f)
             ),
+            shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
-                if (title.isNotEmpty()) {
+                if (author.isNotEmpty()) {
                     IconButton(onClick = { onAuthorChanged("") }) {
                         Icon(
                             imageVector = Icons.Default.Clear,
                             contentDescription = "Clear text",
-                            tint = Color.Gray
+                            tint = colorScheme.onSurfaceVariant
                         )
                     }
                 }

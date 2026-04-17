@@ -126,17 +126,35 @@ val noElevation = 0.dp
 val footerHeight = 74.dp
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFFD6D6D6),
-    secondary = Color(0xFF2E2E2E),
-    tertiary = Color(0xFFB0B0B0),
-    surface = Color(0xFF252525)
+    primary = Color(0xFF64B5F6), // Sky Blue
+    onPrimary = Color.Black,
+    primaryContainer = Color(0xFF1976D2),
+    onPrimaryContainer = Color.White,
+    secondary = Color(0xFF81C784), // Soft Green
+    onSecondary = Color.Black,
+    surface = Color(0xFF121212),
+    onSurface = Color(0xFFE0E0E0),
+    surfaceVariant = Color(0xFF2C2C2C),
+    onSurfaceVariant = Color(0xFFB0B0B0),
+    background = Color(0xFF121212),
+    onBackground = Color(0xFFE0E0E0),
+    outline = Color(0xFF757575)
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF2E2E2E),
-    secondary = Color(0xFFD6D6D6),
-    tertiary = Color(0xFF4A4A4A),
-    surface = Color(0xFFF5F5F5)
+    primary = Color(0xFF2196F3), // Stronger Blue
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFBBDEFB),
+    onPrimaryContainer = Color(0xFF0D47A1),
+    secondary = Color(0xFF4CAF50), // Green
+    onSecondary = Color.White,
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF1C1C1C),
+    surfaceVariant = Color(0xFFF0F0F0),
+    onSurfaceVariant = Color(0xFF444444),
+    background = Color(0xFFF8F9FA),
+    onBackground = Color(0xFF1C1C1C),
+    outline = Color(0xFF79747E)
 )
 
 @Composable
@@ -144,12 +162,29 @@ fun NeuReadTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = true,
+    accentColor: Color? = null,
     content: @Composable () -> Unit
 ) {
     val colors = if (darkTheme) {
-        DarkColorScheme
+        if (accentColor != null) {
+            DarkColorScheme.copy(
+                primary = accentColor,
+                primaryContainer = accentColor.copy(alpha = 0.3f),
+                onPrimaryContainer = Color.White
+            )
+        } else {
+            DarkColorScheme
+        }
     } else {
-        LightColorScheme
+        if (accentColor != null) {
+            LightColorScheme.copy(
+                primary = accentColor,
+                primaryContainer = accentColor.copy(alpha = 0.15f),
+                onPrimaryContainer = accentColor
+            )
+        } else {
+            LightColorScheme
+        }
     }
 
     MaterialTheme(

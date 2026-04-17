@@ -28,31 +28,41 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 object TextTimeRelationsTools {
     fun getCurrentWordIndex(
-        elapsedSeconds: Double,
+        currentPositionMs: Long,
         words: List<String>,
         currentStartTime: Int,
         nextStartTime: Int
     ): Int {
-        // Compute duration between parts in seconds
-        val durationBetweenParts = (nextStartTime - currentStartTime)
+        val durationBetweenParts = (nextStartTime - currentStartTime).toDouble()
 
-        // Prevent division by zero if words list is empty
         if (words.isEmpty() || durationBetweenParts <= 0) return 0
 
-        // Approximate time per word
-        val millisecondsPerWord = durationBetweenParts / words.size
+        val relativeTimeInSegment = currentPositionMs - currentStartTime
+        if (relativeTimeInSegment <= 0) return 0
+        if (relativeTimeInSegment >= durationBetweenParts) return words.size - 1
 
-        // Calculate relative time within the current segment
-        val relativeTimeInSegment = (elapsedSeconds * 1000.0) - (currentStartTime)
+        // Use character-weighted estimation for better accuracy
+        val totalChars = words.sumOf { it.length } + (words.size - 1)
+        val timePerChar = durationBetweenParts / totalChars
+        val targetCharIndex = (relativeTimeInSegment / timePerChar).toInt()
 
-        // Compute word index, ensuring it's within valid bounds
-        return relativeTimeInSegment.div(millisecondsPerWord).toInt().coerceIn(0, words.size - 1)
+        var currentCharCount = 0
+        for (i in words.indices) {
+            currentCharCount += words[i].length
+            if (targetCharIndex < currentCharCount) return i
+            currentCharCount += 1 // space
+            if (targetCharIndex < currentCharCount) return i
+        }
+
+        return (words.size - 1).coerceAtLeast(0)
     }
 
     fun getCurrentBookmarkText(
@@ -106,7 +116,7 @@ class PlayerViewModel @Inject constructor(
     private val prefsStore: PrefsStore
 ) : ViewModel(), SpeakingCallBack {
 
-    override var book: NeuReadBook? = null
+    override val book: NeuReadBook? get() = _state.value.book
     private var player: BookPlayer? = null
 
     fun saveBookChanges() {
@@ -118,6 +128,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     data class PlayerUIState(
+        val book: NeuReadBook? = null,
         val totalTime: Double = 0.0,
         val isSpeaking: Boolean = false,
         val isLoading: Boolean = false,
@@ -126,7 +137,11 @@ class PlayerViewModel @Inject constructor(
         val totalTimeString: String = "00:00",
         val bookmarks: List<Bookmark> = emptyList(),
         val sliderRange: ClosedFloatingPointRange<Float> = 0f..0f,
-        val chapters: List<Chapter> = emptyList()
+        val chapters: List<Chapter> = emptyList(),
+        val isExtendedTextMode: Boolean = false,
+        val isDyslexicFontEnabled: Boolean = false,
+        val isHighlightingEnabled: Boolean = true,
+        val sleepTimerSecondsRemaining: Int? = null
     )
 
     data class HighlightingUIState(
@@ -138,29 +153,71 @@ class PlayerViewModel @Inject constructor(
     override val highlightingState: StateFlow<HighlightingUIState> get() = _highlightingState.asStateFlow()
 
     override fun onUpdateHighlightingUI(state: HighlightingUIState) {
-        viewModelScope.launch {
-            _highlightingState.emit(state)
-        }
+        _highlightingState.value = state
     }
 
     private val _state = MutableStateFlow(PlayerUIState())
     override val viewState: StateFlow<PlayerUIState> get() = _state.asStateFlow()
-    override fun onUpdateUI(state: PlayerUIState) {
-        viewModelScope.launch {
-            _state.emit(state)
+
+    private var sleepTimerJob: kotlinx.coroutines.Job? = null
+
+    fun setSleepTimer(minutes: Int) {
+        sleepTimerJob?.cancel()
+        if (minutes <= 0) {
+            _state.update { it.copy(sleepTimerSecondsRemaining = null) }
+            return
         }
+
+        val totalSeconds = minutes * 60
+        _state.update { it.copy(sleepTimerSecondsRemaining = totalSeconds) }
+
+        sleepTimerJob = viewModelScope.launch {
+            var remaining = totalSeconds
+            while (remaining > 0) {
+                kotlinx.coroutines.delay(1000)
+                remaining--
+                _state.update { it.copy(sleepTimerSecondsRemaining = remaining) }
+            }
+            onPause()
+            _state.update { it.copy(sleepTimerSecondsRemaining = null) }
+        }
+    }
+
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        _state.update { it.copy(sleepTimerSecondsRemaining = null) }
+    }
+
+    override fun onUpdateUI(state: PlayerUIState) {
+        _state.value = state
     }
 
     fun setUpBook() {
         viewModelScope.launch {
+            val existingPlayer = playerUseCase.getBookPlayer()
+            val currentBookId = playerStateRepository.getCurrentBook().first()?.id
+            val selectedBookId = libraryRepository.getSelectedBook()?.id
+            
+            if (existingPlayer != null && currentBookId != null && currentBookId == selectedBookId) {
+                player = existingPlayer
+                val existingBook = playerStateRepository.getCurrentBook().first()
+                _state.update { it.copy(book = existingBook, isLoading = false) }
+                
+                // If player exists, we need to sync the UI state immediately
+                // The player is already initialized and possibly playing
+                player?.updateCallback(this@PlayerViewModel)
+                return@launch
+            }
 
             _highlightingState.value = HighlightingUIState()
-            _state.value = PlayerUIState()
+            _state.value = PlayerUIState(isLoading = true)
 
-            book = withContext(Dispatchers.IO) {
+            val selectedBook = withContext(Dispatchers.IO) {
                 libraryRepository.getSelectedBook()
             }
-            book?.let { book ->
+            _state.update { it.copy(book = selectedBook, isLoading = true) }
+
+            selectedBook?.let { book ->
                 // Ensure voices are loaded in repository
                 repository.fetchAvailableVoices()
 
@@ -198,6 +255,18 @@ class PlayerViewModel @Inject constructor(
                     }
                 )
 
+                viewModelScope.launch {
+                    prefsStore.isDyslexicFontEnabled().collect { enabled ->
+                        _state.update { it.copy(isDyslexicFontEnabled = enabled) }
+                    }
+                }
+
+                viewModelScope.launch {
+                    prefsStore.isHighlightingEnabled().collect { enabled ->
+                        _state.update { it.copy(isHighlightingEnabled = enabled) }
+                    }
+                }
+
                 startPlaybackService()
             }
         }
@@ -206,6 +275,10 @@ class PlayerViewModel @Inject constructor(
 
     fun jumpToChapter(chapter: Chapter) {
         player?.onJumpToChapter(chapter.startIndex)
+    }
+
+    fun toggleExtendedTextMode() {
+        _state.update { it.copy(isExtendedTextMode = !it.isExtendedTextMode) }
     }
 
 
@@ -221,18 +294,19 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun onPause() {
-        viewModelScope.launch {
-            playerUseCase.pause()
-        }
-    }
-
     fun onPlay() {
         viewModelScope.launch {
             playerUseCase.play()
+            _state.update { it.copy(isSpeaking = true) }
         }
     }
 
+    fun onPause() {
+        viewModelScope.launch {
+            playerUseCase.pause()
+            _state.update { it.copy(isSpeaking = false) }
+        }
+    }
 
     fun onClose() {
         viewModelScope.launch {
@@ -260,6 +334,12 @@ class PlayerViewModel @Inject constructor(
     }
 
 
+    fun updateBookmarkNote(bookmark: Bookmark, note: String) {
+        viewModelScope.launch {
+            bookmarkUseCase.updateBookmarkNote(bookmark, note)
+        }
+    }
+
     fun onSliderValueChange(value: Float) {
         viewModelScope.launch {
             playerUseCase.seekTo(value.toLong())
@@ -277,7 +357,11 @@ class PlayerViewModel @Inject constructor(
     override fun onReady(uiState: PlayerUIState) {
         viewModelScope.launch {
             _state.value = uiState.copy(
-                chapters = book?.chapters ?: emptyList()
+                book = _state.value.book,
+                isLoading = false,
+                chapters = book?.chapters ?: emptyList(),
+                isDyslexicFontEnabled = _state.value.isDyslexicFontEnabled,
+                isHighlightingEnabled = _state.value.isHighlightingEnabled
             )
         }
     }
@@ -295,16 +379,24 @@ class PlayerViewModel @Inject constructor(
         hUIState: HighlightingUIState
     ) {
         viewModelScope.launch {
-            book = updatedBook
-            _state.value = pUIState
-            _highlightingState.value = hUIState
-            playbackProgressCallBack(
-                _state.value.progress.toLong(),
-                _state.value.totalTime.toLong(),
-                _state.value.isSpeaking
-            )
+            playerStateRepository.setCurrentBook(updatedBook)
+            libraryRepository.updateBook(updatedBook)
         }
-
+        _state.value = pUIState.copy(
+            book = updatedBook,
+            isLoading = false,
+            isDyslexicFontEnabled = _state.value.isDyslexicFontEnabled,
+            isHighlightingEnabled = _state.value.isHighlightingEnabled
+        )
+        val hState = _highlightingState.value
+        _highlightingState.value = hUIState.copy(
+            currentFrame = if (hUIState.currentFrame.isEmpty()) hState.currentFrame else hUIState.currentFrame
+        )
+        playbackProgressCallBack(
+            _state.value.progress.toLong(),
+            _state.value.totalTime.toLong(),
+            _state.value.isSpeaking
+        )
     }
 
     private fun resetSpeakingState() {

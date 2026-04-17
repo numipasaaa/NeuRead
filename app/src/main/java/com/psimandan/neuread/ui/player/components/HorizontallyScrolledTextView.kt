@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,12 +19,14 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.TextStyle
 import kotlinx.coroutines.launch
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.LayoutDirection
 import com.psimandan.neuread.ui.theme.NeuReadTheme
+import com.psimandan.neuread.ui.theme.OpenDyslexic
 import java.util.Locale
 
 
@@ -69,7 +73,9 @@ fun HorizontallyScrolledTextViewPreviewRTL() {
 @Composable
 fun HorizontallyScrolledTextView(
     highLight: Boolean = true,
-    words: List<String>, index: Int, language: Locale) {
+    words: List<String>, index: Int, language: Locale,
+    isDyslexicFontEnabled: Boolean = false
+) {
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val isRTL = TextUtils.getLayoutDirectionFromLocale(language) == LAYOUT_DIRECTION_RTL
@@ -86,32 +92,34 @@ fun HorizontallyScrolledTextView(
 
     Box(
         contentAlignment = Alignment.CenterStart,
-        modifier = Modifier.background(colorScheme.background)
+        modifier = Modifier.background(colorScheme.surfaceVariant.copy(alpha = 0.3f))
             .fillMaxWidth()
-            .height(50.dp)
+            .height(56.dp)
     ) {
         CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
             LazyRow(
                 state = listState,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 itemsIndexed(words) { i, word ->
-                    val isSelected = (i == index - 1)
-                    val backgroundColor = if (isSelected && highLight) colorScheme.primary else Color.Transparent
-                    val textColor = if (isSelected && highLight) colorScheme.surface else colorScheme.onSurface
+                    val isSelected = highLight && (i == index)
+                    val backgroundColor = if (isSelected) colorScheme.primary else colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    val textColor = if (isSelected) colorScheme.onPrimary else colorScheme.onSurfaceVariant
 
                     Box(
                         modifier = Modifier
-                            .background(backgroundColor)
-                            .padding(horizontal = 4.dp, vertical = 4.dp)
+                            .background(backgroundColor, shape = RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
                     ) {
                         BasicText(
                             text = word,
-                            style = TextStyle(
-                                fontSize = 20.sp,
-                                fontWeight = if (isSelected&& highLight) FontWeight.Bold else FontWeight.Normal,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
                                 color = textColor,
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                fontFamily = if (isDyslexicFontEnabled) OpenDyslexic else FontFamily.Default
                             )
                         )
                     }

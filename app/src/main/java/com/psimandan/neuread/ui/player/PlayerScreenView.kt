@@ -2,73 +2,85 @@ package com.psimandan.neuread.ui.player
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MaterialTheme.colorScheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.psimandan.neuread.data.model.Book
 import com.psimandan.neuread.data.model.Bookmark
-import com.psimandan.neuread.data.model.NeuReadBook
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import com.psimandan.neuread.data.model.Chapter
-import com.psimandan.neuread.ui.components.NiceRoundButton
-import kotlinx.coroutines.launch
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import com.psimandan.neuread.data.model.NeuReadBook
 import com.psimandan.neuread.ui.player.components.BookmarksSectionView
 import com.psimandan.neuread.ui.player.components.HorizontallyScrolledTextView
+import com.psimandan.neuread.ui.components.NiceRoundButton
 import com.psimandan.neuread.ui.theme.NeuReadTheme
+import com.psimandan.neuread.ui.theme.OpenDyslexic
 import com.psimandan.neuread.ui.theme.doubleLargeSpace
 import com.psimandan.neuread.ui.theme.largeSpace
 import com.psimandan.neuread.ui.theme.normalSpace
 import com.psimandan.neuread.ui.theme.smallSpace
 import com.psimandan.neuread.voice.toLocale
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Preview(showBackground = true)
@@ -91,16 +103,11 @@ fun PlayerScreenPreview() {
                     Bookmark(9, "Test 9"),
                     Bookmark(9, "Test 9"),
                     Bookmark(9, "Test 9"),
-                    Bookmark(9, "Test 9")
-                ),
-                isSpeaking = false,
-                progressTime = "00:00",
-                progress = 50f,
-                totalTimeString = "05:00"
+                )
             ),
-            currentFrame = listOf("Test 1", "Test 2", "Test 3"),
+            currentFrame = listOf("Hello", "Compose", "Preview", "How", "Are", "You", "Doing", "Today"),
             currentWordIndexInFrame = 1,
-            sliderRange = 0f..1000f,
+            sliderRange = 0f..100f,
             onEvent = {}
         )
     }
@@ -109,57 +116,53 @@ fun PlayerScreenPreview() {
 @Composable
 fun PlayerScreenView(
     onBackToLibrary: () -> Unit,
-    onSettings: (NeuReadBook) -> Unit,
+    onNavigateToSettings: (NeuReadBook) -> Unit,
     viewModel: PlayerViewModel,
-    onPlayback: (Float) -> Unit
+    playbackProgressCallBack: (Float) -> Unit
 ) {
+    val uiState by viewModel.viewState.collectAsState()
+    val highlightState by viewModel.highlightingState.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.setUpBook()
     }
 
-    val uiState by viewModel.viewState.collectAsState()
-    val highlightingState = viewModel.highlightingState.collectAsState()
-    val currentFrame = highlightingState.value.currentFrame
-    val currentWordIndexInFrame = highlightingState.value.currentWordIndexInFrame
-    val selectedBook = viewModel.book
-
     PlayerScreenContent(
-        selectedBook = selectedBook,
+        selectedBook = viewModel.book,
         uiState = uiState,
-        currentFrame = currentFrame,
-        currentWordIndexInFrame = currentWordIndexInFrame,
+        currentFrame = highlightState.currentFrame,
+        currentWordIndexInFrame = highlightState.currentWordIndexInFrame,
         sliderRange = uiState.sliderRange,
-        onEvent = { it.onEvent(viewModel, onSettings, onBackToLibrary, onPlayback) },
-    )
-
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val lifecycleObserver = remember(lifecycleOwner) {
-        LifecycleEventObserver { _, event ->
+        onEvent = { event ->
             when (event) {
-                Lifecycle.Event.ON_START -> {
-                    // Handle onAppear event
+                PlayerEvent.BackToLibrary -> onBackToLibrary()
+                PlayerEvent.PauseClick -> viewModel.onPause()
+                PlayerEvent.PlayClick -> viewModel.onPlay()
+                PlayerEvent.FastForward -> viewModel.fastForward()
+                PlayerEvent.FastRewind -> viewModel.fastRewind()
+                PlayerEvent.AddBookmark -> viewModel.saveBookmark()
+                is PlayerEvent.ChapterClick -> viewModel.jumpToChapter(event.chapter)
+                is PlayerEvent.SliderValueChange -> {
+                    viewModel.onSliderValueChange(event.value)
+                    playbackProgressCallBack(event.value)
                 }
 
-                Lifecycle.Event.ON_STOP -> {
-                    // Handle onDisappear event
-                    viewModel.saveBookChanges()
+                PlayerEvent.Settings -> viewModel.book?.let { onNavigateToSettings(it) }
+                PlayerEvent.ToggleExtendedTextMode -> viewModel.toggleExtendedTextMode()
+                is PlayerEvent.UpdateBookmarkNote -> viewModel.updateBookmarkNote(
+                    event.bookmark,
+                    event.note
+                )
+                is PlayerEvent.BookmarkClick -> {
+                    viewModel.playFromBookmark(event.position.toInt())
+                    playbackProgressCallBack(event.position)
                 }
-
-                else -> {}
+                is PlayerEvent.SetSleepTimer -> viewModel.setSleepTimer(event.minutes)
+                PlayerEvent.CancelSleepTimer -> viewModel.cancelSleepTimer()
+                is PlayerEvent.DeleteBookmark -> viewModel.deleteBookmark(event.bookmark)
             }
         }
-    }
-    DisposableEffect(lifecycleOwner) {
-        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
-            viewModel.onClose()
-            viewModel.saveBookChanges()
-        }
-    }
-
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -173,6 +176,7 @@ fun PlayerScreenContent(
     onEvent: (PlayerEvent) -> Unit
 ) {
     var showChaptersSheet by remember { mutableStateOf(false) }
+    var showSleepTimerSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
 
@@ -180,22 +184,41 @@ fun PlayerScreenContent(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { },
-                    actions = {
+                    title = {
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            TextButton(onClick = { showSleepTimerSheet = true }) {
+                                Text(
+                                    if (uiState.sleepTimerSecondsRemaining != null) {
+                                        val minutes = uiState.sleepTimerSecondsRemaining / 60
+                                        val seconds = uiState.sleepTimerSecondsRemaining % 60
+                                        java.lang.String.format(
+                                            java.util.Locale.getDefault(),
+                                            "%02d:%02d",
+                                            minutes,
+                                            seconds
+                                        )
+                                    } else "Sleep",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = colorScheme.primary
+                                )
+                            }
+                        }
+                    },
+                    navigationIcon = {
                         TextButton(onClick = { onEvent(PlayerEvent.BackToLibrary) }) {
                             Text(
                                 "Library",
-                                style = MaterialTheme.typography.titleLarge,
-                                textAlign = TextAlign.Center
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = colorScheme.primary
                             )
                         }
-
-                        Spacer(modifier = Modifier.weight(1F))
+                    },
+                    actions = {
                         TextButton(onClick = { onEvent(PlayerEvent.Settings) }) {
                             Text(
                                 "Settings",
-                                style = MaterialTheme.typography.titleLarge,
-                                textAlign = TextAlign.Center
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = colorScheme.primary
                             )
                         }
                     }
@@ -208,10 +231,102 @@ fun PlayerScreenContent(
                         .fillMaxSize()
                         .padding(padding)
                 ) {
-                    if (uiState.bookmarks.isNotEmpty()) {
-                        BookmarksSectionView(uiState, onEvent)
+                    if (uiState.isExtendedTextMode) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(normalSpace)
+                                .background(
+                                    colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .padding(normalSpace)
+                        ) {
+                            val scrollState = rememberScrollState()
+                            var textLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+                            val primaryColor = colorScheme.primary
+                            val onPrimaryColor = colorScheme.onPrimary
+                            val onSurfaceColor = colorScheme.onSurface
+                            val annotatedString = remember(currentFrame, currentWordIndexInFrame, uiState.isHighlightingEnabled, primaryColor, onPrimaryColor, onSurfaceColor) {
+                                buildAnnotatedString {
+                                    currentFrame.forEachIndexed { index, word ->
+                                        val isHighlighted = uiState.isHighlightingEnabled && index == currentWordIndexInFrame
+                                        if (isHighlighted) {
+                                            withStyle(
+                                                style = SpanStyle(
+                                                    background = primaryColor,
+                                                    color = onPrimaryColor,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            ) {
+                                                append(word)
+                                            }
+                                        } else {
+                                            withStyle(
+                                                style = SpanStyle(
+                                                    background = Color.Transparent,
+                                                    color = onSurfaceColor
+                                                )
+                                            ) {
+                                                append(word)
+                                            }
+                                        }
+                                        if (index < currentFrame.size - 1) {
+                                            append(" ")
+                                        }
+                                    }
+                                }
+                            }
+
+                            LaunchedEffect(currentWordIndexInFrame, uiState.isSpeaking) {
+                                if (currentWordIndexInFrame == 0 && uiState.isSpeaking) {
+                                    scrollState.animateScrollTo(0)
+                                } else if (uiState.isSpeaking) {
+                                    textLayoutResult?.let { layoutResult ->
+                                        // Calculate the start offset of the current word in the annotated string
+                                        var charOffset = 0
+                                        for (i in 0 until currentWordIndexInFrame) {
+                                            charOffset += currentFrame[i].length + 1 // +1 for the space
+                                        }
+
+                                        // Get the bounding box (rect) for the first character of the current word
+                                        val cursorRect = layoutResult.getCursorRect(charOffset)
+                                        val wordTop = cursorRect.top
+                                        val wordBottom = cursorRect.bottom
+
+                                        val viewportHeight = scrollState.viewportSize
+                                        if (viewportHeight > 0) {
+                                            val currentScroll = scrollState.value
+                                            val buffer = 50 // Padding to keep the word from being exactly at the edge
+
+                                            if (wordTop < currentScroll + buffer) {
+                                                scrollState.animateScrollTo((wordTop - buffer).toInt().coerceAtLeast(0))
+                                            } else if (wordBottom > currentScroll + viewportHeight - buffer) {
+                                                scrollState.animateScrollTo((wordBottom - viewportHeight + buffer).toInt())
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text(
+                                text = annotatedString,
+                                onTextLayout = { textLayoutResult = it },
+                                modifier = Modifier.verticalScroll(scrollState),
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontFamily = if (uiState.isDyslexicFontEnabled) OpenDyslexic else FontFamily.Default,
+                                    lineHeight = 22.sp
+                                ),
+                                color = colorScheme.onSurface
+                            )
+                        }
+                    } else {
+                        if (uiState.bookmarks.isNotEmpty()) {
+                            BookmarksSectionView(uiState, onEvent)
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
                     }
-                    Spacer(modifier = Modifier.weight(1f))
                     HorizontalDivider()
                 }
             },
@@ -228,13 +343,17 @@ fun PlayerScreenContent(
                             Text(
                                 it.title,
                                 textAlign = TextAlign.Center,
-                                style = MaterialTheme.typography.headlineMedium
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            Spacer(modifier = Modifier.padding(vertical = smallSpace))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 it.author,
                                 textAlign = TextAlign.Center,
-                                style = MaterialTheme.typography.headlineSmall
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = colorScheme.onSurfaceVariant
                             )
                         }
                         Column(
@@ -272,23 +391,28 @@ fun PlayerScreenContent(
                             }
                         }
                     } ?: run {
-                        Column(
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                "Loading..", textAlign = TextAlign.Center,
-                                style = MaterialTheme.typography.headlineMedium
-                            )
+                        if (!uiState.isSpeaking) {
+                            Column(
+                                verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    "Loading..", textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.headlineMedium
+                                )
+                            }
                         }
                     }
-                    HorizontalDivider()
-                    HorizontallyScrolledTextView(
-                        highLight = selectedBook is Book,
-                        words = currentFrame,
-                        index = currentWordIndexInFrame,
-                        language = selectedBook?.language?.toLocale() ?: Locale.getDefault()
-                    )
+                    if (!uiState.isExtendedTextMode) {
+                        HorizontalDivider()
+                        HorizontallyScrolledTextView(
+                            highLight = uiState.isHighlightingEnabled,
+                            words = currentFrame,
+                            index = currentWordIndexInFrame,
+                            language = selectedBook?.language?.toLocale() ?: Locale.getDefault(),
+                            isDyslexicFontEnabled = uiState.isDyslexicFontEnabled
+                        )
+                    }
                     HorizontalDivider()
                     Row(
                         modifier = Modifier
@@ -358,7 +482,16 @@ fun PlayerScreenContent(
                                 diameter = 44.dp,
                                 clickHandler = { showChaptersSheet = true }
                             )
+                        } else {
+                            Spacer(modifier = Modifier.width(44.dp))
                         }
+                        Spacer(modifier = Modifier.weight(1f))
+                        NiceRoundButton(
+                            contentDescription = "Toggle Text Mode",
+                            icon = Icons.Filled.TextFields,
+                            diameter = 44.dp,
+                            clickHandler = { onEvent(PlayerEvent.ToggleExtendedTextMode) }
+                        )
                     }
                 }
             }
@@ -374,23 +507,98 @@ fun PlayerScreenContent(
                         .fillMaxWidth()
                         .padding(bottom = 32.dp)
                 ) {
+                    if (uiState.chapters.isNotEmpty()) {
+                        Text(
+                            "Chapters",
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontFamily = if (uiState.isDyslexicFontEnabled) OpenDyslexic else FontFamily.Default
+                            ),
+                            modifier = Modifier.padding(16.dp)
+                        )
+                        HorizontalDivider()
+                        LazyColumn {
+                            items(uiState.chapters) { chapter ->
+                                ListItem(
+                                    headlineContent = {
+                                        Text(
+                                            chapter.title,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontFamily = if (uiState.isDyslexicFontEnabled) OpenDyslexic else FontFamily.Default
+                                            )
+                                        )
+                                    },
+                                    modifier = Modifier.clickable {
+                                        onEvent(PlayerEvent.ChapterClick(chapter))
+                                        scope.launch { sheetState.hide() }.invokeOnCompletion {
+                                            if (!sheetState.isVisible) {
+                                                showChaptersSheet = false
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("No chapters available")
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showSleepTimerSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showSleepTimerSheet = false },
+                sheetState = sheetState
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 32.dp)
+                ) {
                     Text(
-                        "Chapters",
-                        style = MaterialTheme.typography.headlineSmall,
+                        "Sleep Timer",
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontFamily = if (uiState.isDyslexicFontEnabled) OpenDyslexic else FontFamily.Default
+                        ),
                         modifier = Modifier.padding(16.dp)
                     )
                     HorizontalDivider()
+                    
+                    val timerOptions = listOf(
+                        "Off" to 0,
+                        "5 Minutes" to 5,
+                        "10 Minutes" to 10,
+                        "15 Minutes" to 15,
+                        "30 Minutes" to 30,
+                        "45 Minutes" to 45,
+                        "60 Minutes" to 60
+                    )
+
                     LazyColumn {
-                        items(uiState.chapters) { chapter ->
+                        items(timerOptions) { (label, minutes) ->
                             ListItem(
-                                headlineContent = { Text(chapter.title) },
+                                headlineContent = {
+                                    Text(
+                                        label,
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            fontFamily = if (uiState.isDyslexicFontEnabled) OpenDyslexic else FontFamily.Default
+                                        )
+                                    )
+                                },
                                 modifier = Modifier.clickable {
-                                    onEvent(PlayerEvent.ChapterClick(chapter))
-                                    scope.launch { sheetState.hide() }.invokeOnCompletion {
-                                        if (!sheetState.isVisible) {
-                                            showChaptersSheet = false
-                                        }
+                                    if (minutes == 0) {
+                                        onEvent(PlayerEvent.CancelSleepTimer)
+                                    } else {
+                                        onEvent(PlayerEvent.SetSleepTimer(minutes))
                                     }
+                                    showSleepTimerSheet = false
                                 }
                             )
                         }
@@ -399,7 +607,7 @@ fun PlayerScreenContent(
             }
         }
 
-        if (uiState.totalTimeString.isEmpty() || uiState.totalTimeString.endsWith("00:00")) {
+        if ((uiState.isLoading || uiState.totalTimeString.isEmpty() || uiState.totalTimeString.endsWith("00:00")) && !uiState.isSpeaking) {
             Box(
                 Modifier
                     .fillMaxSize()

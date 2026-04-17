@@ -1,7 +1,11 @@
 package com.psimandan.neuread.ui.components
 
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -168,11 +172,17 @@ fun NiceButton(
     enabled: Boolean = true,
     loading: LoadingState = LoadingState.Hide,
     title: String,
-    titleColor: Color = colorScheme.secondary,
+    titleColor: Color = colorScheme.onPrimary,
     modifier: Modifier = Modifier,
     color: Color = colorScheme.primary,
     clickHandler: () -> Unit = {}
 ) {
+    val containerColor by animateColorAsState(
+        targetValue = if (enabled) color else colorScheme.onSurface.copy(alpha = 0.12f),
+        animationSpec = tween(300),
+        label = "containerColor"
+    )
+
     OutlinedButton(
         enabled = enabled,
         onClick = {
@@ -181,39 +191,33 @@ fun NiceButton(
             }
         },
         elevation = ButtonDefaults.buttonElevation(
-            defaultElevation = 8.dp,
-            pressedElevation = 2.dp,
-            focusedElevation = 8.dp,
-            hoveredElevation = 8.dp,
+            defaultElevation = 2.dp,
+            pressedElevation = 0.dp,
             disabledElevation = 0.dp
         ),
         modifier = modifier,
-        border = BorderStroke(1.dp, if (enabled) color else Color.Gray),
-        shape = RoundedCornerShape(1), //50% percent
+        border = BorderStroke(1.dp, if (enabled) color.copy(alpha = 0.5f) else Color.Transparent),
+        shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = colorScheme.primary,
-            containerColor = if (enabled) color else Color.Gray
+            contentColor = colorScheme.onPrimary,
+            containerColor = containerColor
         ),
     ) {
-        Box(modifier = Modifier.padding(2.dp)) {
+        Box(
+            modifier = Modifier.padding(vertical = 4.dp, horizontal = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
             if (loading == LoadingState.Show) {
-                Text(
-                    text = " ",
-                    style = typography.headlineSmall,
-                    color = if (enabled)  colorScheme.surface else titleColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
                 CircularProgressIndicator(
                     modifier = Modifier.size(24.dp),
-                    color = colorScheme.secondary,
-                    strokeWidth = 3.dp
+                    color = colorScheme.onPrimary,
+                    strokeWidth = 2.dp
                 )
             } else {
                 Text(
                     text = title,
-                    style = typography.headlineSmall,
-                    color = if (enabled) colorScheme.surface else titleColor,
+                    style = typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = if (enabled) colorScheme.onPrimary else colorScheme.onSurface.copy(alpha = 0.38f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

@@ -1,6 +1,7 @@
 package com.psimandan.neuread.voice
 
 import android.content.Context
+import timber.log.Timber
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -19,16 +20,25 @@ class NeuTTSApiClient(private val context: Context) {
     // Replace with your computer's local IP address (e.g., 192.168.1.100)
     private val baseUrl = "http://192.168.1.131:8000"
 
+    data class SynthesisResult(val file: File, val durationsMs: List<Int>)
+
     private val client = OkHttpClient.Builder()
-        .readTimeout(60, TimeUnit.SECONDS) // TTS generation takes time
-        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(300, TimeUnit.SECONDS) // TTS generation takes time
+        .connectTimeout(300, TimeUnit.SECONDS)
+        .writeTimeout(300, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
-    suspend fun synthesizeSpeech(text: String): File? = withContext(Dispatchers.IO) {
+    suspend fun synthesizeSpeech(text: String, voice: String? = null): File? = synthesizeBatch(listOf(text), voice)?.file
+
+    suspend fun synthesizeBatch(sentences: List<String>, voice: String? = null): SynthesisResult? = withContext(Dispatchers.IO) {
         try {
             val json = JSONObject().apply {
-                put("text", text)
-                put("max_new_tokens", 1000)
+                put("sentences", JSONArray(sentences))
+                put("pause_seconds", 0.3)
+                if (voice != null) {
+                    put("voice", voice)
+                }
             }
 
             val requestBody = json.toString().toRequestBody("application/json".toMediaType())
@@ -40,16 +50,20 @@ class NeuTTSApiClient(private val context: Context) {
             val response = client.newCall(request).execute()
 
             if (response.isSuccessful && response.body != null) {
-                val tempFile = File(context.cacheDir, "neutts_cache_${System.currentTimeMillis()}.wav")
+                val durations = response.header("X-Sentence-Durations-Ms")?.split(",")?.mapNotNull { it.trim().toIntOrNull() } ?: emptyList()
+                val tempFile = File(context.cacheDir, "neutts_batch_${System.currentTimeMillis()}.wav")
                 response.body!!.byteStream().use { input ->
                     tempFile.outputStream().use { output ->
                         input.copyTo(output)
                     }
                 }
-                return@withContext tempFile
+                return@withContext SynthesisResult(tempFile, durations)
+            } else {
+                val errorBody = response.body?.string()
+                Timber.e("NeuTTS synthesizeBatch failed: ${response.code} - $errorBody")
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Timber.e(e, "Error in synthesizeBatch")
         }
         return@withContext null
     }
@@ -73,15 +87,28 @@ class NeuTTSApiClient(private val context: Context) {
             val response = client.newCall(request).execute()
             if (response.isSuccessful && response.body != null) {
                 val jsonResponse = JSONObject(response.body!!.string())
-                val codesArray = jsonResponse.getJSONArray("codes")
+                val rawCodes = jsonResponse.get("codes")
                 val codes = mutableListOf<Int>()
-                for (i in 0 until codesArray.length()) {
-                    codes.add(codesArray.getInt(i))
+
+                if (rawCodes is JSONArray) {
+                    // Handle both flat [1,2,3] and nested [[1,2,3]] formats
+                    val firstElement = if (rawCodes.length() > 0) rawCodes.get(0) else null
+                    if (firstElement is JSONArray) {
+                        for (i in 0 until firstElement.length()) {
+                            codes.add(firstElement.getInt(i))
+                        }
+                    } else {
+                        for (i in 0 until rawCodes.length()) {
+                            codes.add(rawCodes.getInt(i))
+                        }
+                    }
                 }
                 return@withContext codes
+            } else {
+                Timber.e("Encode reference failed: ${response.code}")
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Timber.e(e, "Error encoding reference")
         }
         return@withContext null
     }
@@ -90,14 +117,24 @@ class NeuTTSApiClient(private val context: Context) {
         text: String,
         refText: String,
         refCodes: List<Int>
-    ): File? = withContext(Dispatchers.IO) {
+    ): File? = cloneBatch(listOf(text), refText, refCodes)?.file
+
+    suspend fun cloneBatch(
+        sentences: List<String>,
+        refText: String,
+        refCodes: List<Int>
+    ): SynthesisResult? = withContext(Dispatchers.IO) {
         try {
-            val json = JSONObject().apply {
-                put("text", text)
-                put("ref_text", refText)
-                put("ref_codes", JSONArray(refCodes))
-                put("max_new_tokens", 1500)
-            }
+            val json = JSONObject()
+            json.put("sentences", JSONArray(sentences))
+            json.put("ref_text", refText)
+            
+            // Explicitly build the codes array to ensure it's a flat list of integers
+            val codesArray = JSONArray()
+            refCodes.forEach { codesArray.put(it) }
+            json.put("ref_codes", codesArray)
+            
+            json.put("pause_seconds", 0.3)
 
             val requestBody = json.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
@@ -107,16 +144,20 @@ class NeuTTSApiClient(private val context: Context) {
 
             val response = client.newCall(request).execute()
             if (response.isSuccessful && response.body != null) {
-                val tempFile = File(context.cacheDir, "cloned_tts_${System.currentTimeMillis()}.wav")
+                val durations = response.header("X-Sentence-Durations-Ms")?.split(",")?.mapNotNull { it.trim().toIntOrNull() } ?: emptyList()
+                val tempFile = File(context.cacheDir, "cloned_batch_${System.currentTimeMillis()}.wav")
                 response.body!!.byteStream().use { input ->
                     tempFile.outputStream().use { output ->
                         input.copyTo(output)
                     }
                 }
-                return@withContext tempFile
+                return@withContext SynthesisResult(tempFile, durations)
+            } else {
+                val errorBody = response.body?.string()
+                Timber.e("NeuTTS cloneBatch failed: ${response.code} - $errorBody")
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Timber.e(e, "Error in cloneBatch")
         }
         return@withContext null
     }

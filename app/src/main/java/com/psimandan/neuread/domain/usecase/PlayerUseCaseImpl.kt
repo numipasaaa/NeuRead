@@ -54,6 +54,10 @@ class PlayerUseCaseImpl @Inject constructor(
         this.bookPlayer = player
     }
 
+    override fun getBookPlayer(): BookPlayer? {
+        return bookPlayer
+    }
+
     override fun getCurrentTimeElapsed(): Long {
         return bookPlayer?.currentTimeElapsed() ?: 0
     }

@@ -36,12 +36,17 @@ data class AudioBook(
     override fun playerType(): BookPlayerType = BookPlayerType.AUDIO
 
     override fun lazyCalculate(completion: () -> Unit) {
+        if (!_state.value.isCalculating && _state.value.totalTime != "00:00") {
+            completion()
+            return
+        }
+
         _state.value = _state.value.copy(isCalculating = true)
 
         coroutineScope.launch(Dispatchers.IO) {
             val duration = calculateDuration()
-            val formattedTotalTime = (duration / voiceRate).toDouble().formatSecondsToHMS()
-            val formattedElapsedTime = (lastPosition / voiceRate).toDouble().formatSecondsToHMS()
+            val formattedTotalTime = duration.toDouble().formatSecondsToHMS()
+            val formattedElapsedTime = lastPosition.toDouble().formatSecondsToHMS()
 
             withContext(Dispatchers.Main) {
                 _state.value = BookUIState(
@@ -49,7 +54,7 @@ data class AudioBook(
                     isCalculating = false,
                     progressTime = formattedElapsedTime,
                     totalTime = formattedTotalTime,
-                    totalTimeSeconds = (duration / voiceRate).toLong()
+                    totalTimeSeconds = duration.toLong()
                 )
                 completion()
             }
