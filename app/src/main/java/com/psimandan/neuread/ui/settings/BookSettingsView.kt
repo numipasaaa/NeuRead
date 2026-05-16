@@ -123,6 +123,7 @@ fun BookSettingsPreviewBook() {
             selectedRate = 1f,
             dyslexicFontEnabled = false,
             highlightingEnabled = true,
+            onDeleteVoice = {},
             onEvent = {}
         )
     }
@@ -171,6 +172,7 @@ fun BookSettingsPreviewAudiobook() {
             selectedRate = 1f,
             dyslexicFontEnabled = false,
             highlightingEnabled = true,
+            onDeleteVoice = {},
             onEvent = {}
         )
     }
@@ -218,6 +220,10 @@ fun BookSettingsScreenView(
         selectedVoice = selectedVoice,
         dyslexicFontEnabled = viewState.dyslexicFontEnabled,
         highlightingEnabled = viewState.highlightingEnabled,
+        onDeleteVoice = { voice ->
+            voiceSelector.deleteVoice(voice)
+            viewModel.validateSelectedVoice(voices)
+        },
         onEvent = { it.onEvent(model = viewModel, onNavigateBack = onNavigateBack) }
     )
 
@@ -225,18 +231,10 @@ fun BookSettingsScreenView(
         BookSettingsEvent.Cancel.onEvent(model = viewModel, onNavigateBack = onNavigateBack)
     }
 
-    val pinCode = remember { mutableStateOf("") }
     if (viewState.showDeleteDialog) {
         ConfirmDeleteDialog(
-            pincode = pinCode.value,
-            buttonEnabled = (pinCode.value == "delete"),
-            onValueChange = { value ->
-                pinCode.value = value
-            },
             onDeleteClicked = {
-                if (pinCode.value == "delete") {
-                    viewModel.onDelete(onBookDeleted)
-                }
+                viewModel.onDelete(onBookDeleted)
             },
             onDismissRequest = {
                 viewModel.onShowDelete(false)
@@ -262,6 +260,7 @@ fun BookSettingsScreenContent(
     selectedLanguage: Locale,
     dyslexicFontEnabled: Boolean,
     highlightingEnabled: Boolean,
+    onDeleteVoice: (NeuReadVoice) -> Unit,
     onEvent: (BookSettingsEvent) -> Unit
 ) {
     Box(Modifier.background(colorScheme.background)) {
@@ -599,6 +598,9 @@ fun BookSettingsScreenContent(
                             onSave = {
                                 onEvent(BookSettingsEvent.VoiceSelected(it))
                                 showVoiceDialog.value = false
+                            },
+                            onDeleteVoice = {
+                                onDeleteVoice(it)
                             },
                             onDismiss = {
                                 showVoiceDialog.value = false

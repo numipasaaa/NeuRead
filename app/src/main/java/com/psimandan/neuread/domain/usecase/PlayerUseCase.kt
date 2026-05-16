@@ -15,4 +15,5 @@ interface PlayerUseCase {
     fun setBookPlayer(player: BookPlayer)
     fun getBookPlayer(): BookPlayer?
     fun getCurrentTimeElapsed(): Long
+    fun isLoading(): Boolean
 }

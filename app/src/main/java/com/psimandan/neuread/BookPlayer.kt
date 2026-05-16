@@ -23,7 +23,8 @@ interface BookPlayer {
     fun onDeleteBookmark(bookmark: Bookmark)
     fun onUpdateBookmarkNote(bookmark: Bookmark, note: String)
     fun onClose()
+    fun onUpdateSpeechRate(rate: Float)
     fun updateCallback(callback: SpeakingCallBack)
-
+    fun isLoading(): Boolean
     fun currentTimeElapsed(): Long
 }

@@ -106,6 +106,7 @@ object TextTimeRelationsTools {
 }
 
 @HiltViewModel
+@androidx.media3.common.util.UnstableApi
 class PlayerViewModel @Inject constructor(
     @ApplicationContext private val application: Context,
     private val repository: VoiceRepository,
@@ -118,6 +119,41 @@ class PlayerViewModel @Inject constructor(
 
     override val book: NeuReadBook? get() = _state.value.book
     private var player: BookPlayer? = null
+
+    private fun switchPlayerToAudio(audioBook: AudioBook) {
+        viewModelScope.launch {
+            val isCurrentlyPlaying = _state.value.isSpeaking
+            val currentPos = player?.currentTimeElapsed() ?: 0L
+
+            player?.onClose()
+
+            player = AudioBookPlayer(
+                application,
+                speakingCallback = this@PlayerViewModel
+            )
+
+            player?.let { playerInstance ->
+                playerUseCase.setBookPlayer(playerInstance)
+                bookmarkUseCase.setBookPlayer(playerInstance)
+            }
+
+            // Sync the internal lastPosition of the audiobook with the current progress
+            // This ensures that when initialized, the player starts from the right place
+            val positionToSeek = (currentPos / 1000).toFloat()
+            player?.onUserChangePosition(positionToSeek)
+            
+            if (isCurrentlyPlaying) {
+                // If it was playing, we restart it. 
+                // Note: The user said "dont want it to play automatically", 
+                // but this usually means "don't start playing if I wasn't already listening".
+                // If they WERE listening, we should continue.
+                player?.onPlay(com.psimandan.neuread.PlaybackSource.AUTO_PLAY)
+            } else {
+                // If it wasn't playing, we just make sure the UI is ready at the new position
+                player?.updateCallback(this@PlayerViewModel)
+            }
+        }
+    }
 
     fun saveBookChanges() {
         viewModelScope.launch {
@@ -190,23 +226,48 @@ class PlayerViewModel @Inject constructor(
 
     override fun onUpdateUI(state: PlayerUIState) {
         _state.value = state
+        viewModelScope.launch {
+            playerStateRepository.updatePlaybackState(
+                playerStateRepository.getPlaybackState().first().copy(
+                    isPlaying = state.isSpeaking,
+                    formattedProgressTime = state.progressTime
+                )
+            )
+        }
     }
 
     fun setUpBook() {
         viewModelScope.launch {
+            playerStateRepository.getSpeechRate().collect { rate ->
+                rate?.let {
+                    player?.onUpdateSpeechRate(it)
+                }
+            }
+        }
+
+        viewModelScope.launch {
             val existingPlayer = playerUseCase.getBookPlayer()
-            val currentBookId = playerStateRepository.getCurrentBook().first()?.id
+            val currentBook = playerStateRepository.getCurrentBook().first()
+            val currentBookId = currentBook?.id
             val selectedBookId = libraryRepository.getSelectedBook()?.id
-            
+
             if (existingPlayer != null && currentBookId != null && currentBookId == selectedBookId) {
-                player = existingPlayer
-                val existingBook = playerStateRepository.getCurrentBook().first()
-                _state.update { it.copy(book = existingBook, isLoading = false) }
-                
-                // If player exists, we need to sync the UI state immediately
-                // The player is already initialized and possibly playing
-                player?.updateCallback(this@PlayerViewModel)
-                return@launch
+                // Ensure the player type matches the book type (e.g., after deletion/re-download)
+                val isTypeMismatch = (currentBook is AudioBook && existingPlayer !is AudioBookPlayer) ||
+                        (currentBook is Book && existingPlayer !is SpeechBookPlayer)
+
+                if (!isTypeMismatch) {
+                    player = existingPlayer
+                    _state.update { it.copy(book = currentBook, isLoading = false) }
+
+                    // If player exists, we need to sync the UI state immediately
+                    // The player is already initialized and possibly playing
+                    player?.updateCallback(this@PlayerViewModel)
+                    return@launch
+                } else {
+                    // Type mismatch occurred (e.g. AI Audio was deleted), close old player
+                    existingPlayer.onClose()
+                }
             }
 
             _highlightingState.value = HighlightingUIState()
@@ -247,6 +308,23 @@ class PlayerViewModel @Inject constructor(
 
                 // Update repository state
                 playerStateRepository.setCurrentBook(book)
+
+                viewModelScope.launch {
+                    playerStateRepository.getCurrentBook().collect { updatedBook ->
+                        if (updatedBook != null && updatedBook.id == book.id) {
+                            val previousBook = _state.value.book
+                            _state.update { it.copy(book = updatedBook) }
+
+                            if (previousBook is Book && updatedBook is AudioBook) {
+                                // Transition from TTS to AI Audio if it just became an AudioBook
+                                switchPlayerToAudio(updatedBook)
+                            } else if (previousBook is AudioBook && updatedBook is Book) {
+                                // Transition from AI Audio back to TTS if it was deleted
+                                setUpBook()
+                            }
+                        }
+                    }
+                }
 
                 _state.value = _state.value.copy(
                     chapters = when (book) {
@@ -304,7 +382,7 @@ class PlayerViewModel @Inject constructor(
     fun onPause() {
         viewModelScope.launch {
             playerUseCase.pause()
-            _state.update { it.copy(isSpeaking = false) }
+            _state.update { it.copy(isSpeaking = false, isLoading = false) }
         }
     }
 
@@ -312,6 +390,7 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             stopPlaybackService()
             player?.onClose()
+            _state.update { it.copy(book = null, isSpeaking = false) }
         }
     }
 
@@ -359,9 +438,18 @@ class PlayerViewModel @Inject constructor(
             _state.value = uiState.copy(
                 book = _state.value.book,
                 isLoading = false,
-                chapters = book?.chapters ?: emptyList(),
+                chapters = _state.value.book?.chapters ?: emptyList(),
                 isDyslexicFontEnabled = _state.value.isDyslexicFontEnabled,
                 isHighlightingEnabled = _state.value.isHighlightingEnabled
+            )
+
+            // PUSH INITIAL TIME AND DURATION TO GLOBAL STATE
+            val currentState = playerStateRepository.getPlaybackState().first()
+            playerStateRepository.updatePlaybackState(
+                currentState.copy(
+                    formattedProgressTime = uiState.progressTime,
+                    duration = uiState.totalTime.toLong()
+                )
             )
         }
     }
@@ -381,6 +469,15 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             playerStateRepository.setCurrentBook(updatedBook)
             libraryRepository.updateBook(updatedBook)
+
+            // PUSH REAL-TIME TIME AND DURATION TO GLOBAL STATE
+            playerStateRepository.updatePlaybackState(
+                playerStateRepository.getPlaybackState().first().copy(
+                    isPlaying = pUIState.isSpeaking,
+                    formattedProgressTime = pUIState.progressTime,
+                    duration = pUIState.totalTime.toLong()
+                )
+            )
         }
         _state.value = pUIState.copy(
             book = updatedBook,
@@ -407,7 +504,7 @@ class PlayerViewModel @Inject constructor(
 
     private fun startPlaybackService() {
         val intent = Intent(application, PlayerService::class.java)
-        ContextCompat.startForegroundService(application, intent)
+        application.startService(intent)
     }
 
     private fun stopPlaybackService() {

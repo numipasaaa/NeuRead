@@ -43,10 +43,15 @@ class AudioBookPlayer(
             setMediaItem(mediaItem)
             prepare()
             pause()
-            seekTo((book.lastPosition * 1000L))
+            val startPosMs = book.lastPosition * 1000L
+            seekTo(startPosMs)
             playbackParameters = PlaybackParameters(book.voiceRate)
 
             addListener(object : Player.Listener {
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    Timber.d("onMediaItemTransition reason=$reason")
+                }
+
                 override fun onPlaybackStateChanged(state: Int) {
                     Timber.d("onPlaybackStateChanged: $state")
                     when (state) {
@@ -56,29 +61,13 @@ class AudioBookPlayer(
                         }
 
                         Player.STATE_READY -> {
-                            Timber.d("STATE_READY1: ${book.viewState.value.totalTimeSeconds}")
-                            if (book.viewState.value.totalTimeSeconds == 0L) {
-                                book.lazyCalculate {
-                                    val totalSecs = book.viewState.value.totalTimeSeconds
-                                    speakingCallback.onReady(uiState = PlayerViewModel.PlayerUIState(
-                                        progress = book.lastPosition.toFloat(),
-                                        totalTimeString = book.viewState.value.totalTime,
-                                        isLoading = false,
-                                        progressTime = book.lastPosition.toDouble().formatSecondsToHMS(),
-                                        sliderRange = 0f..totalSecs.toFloat(),
-                                        totalTime = totalSecs.toDouble(),
-                                        bookmarks = book.bookmarks.map {
-                                            it.title = titleForAudioBookmark(book, it.position); it
-                                        },
-                                        chapters = book.chapters
-                                    ))
-                                }
-                            } else {
-                                Timber.d("STATE_READY2: ${player.currentPosition}")
+                            fun sendReady() {
+                                val viewState = book.viewState.value
+                                val totalSecs = viewState.totalTimeSeconds
                                 val currentPositionMs = player.currentPosition
                                 val elapsedSeconds = currentPositionMs / 1000.0
                                 val elapsedTimeToShow = elapsedSeconds.formatSecondsToHMS()
-                                
+
                                 val textFrame = book.getCurrentText(elapsedMilliseconds = currentPositionMs.toDouble())
                                 val words = textFrame.text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
                                 frame = words
@@ -91,27 +80,38 @@ class AudioBookPlayer(
                                     currentStartTime,
                                     nextPartStartTime
                                 )
-                                
-                                speakingCallback.onProgressUpdate(
-                                    updatedBook = book.copy(
-                                        lastPosition = elapsedSeconds.toInt(),
-                                        updated = System.currentTimeMillis()
-                                    ),
-                                    speakingCallback.viewState.value.copy(
-                                        progress = elapsedSeconds.toFloat(),
-                                        progressTime = elapsedTimeToShow,
-                                        isSpeaking = isPlaying,
-                                        isLoading = false
-                                    ),
-                                    speakingCallback.highlightingState.value.copy(
+
+                                speakingCallback.onReady(uiState = PlayerViewModel.PlayerUIState(
+                                    progress = elapsedSeconds.toFloat(),
+                                    totalTimeString = viewState.totalTime,
+                                    isLoading = false,
+                                    isSpeaking = isPlaying,
+                                    progressTime = elapsedTimeToShow,
+                                    sliderRange = 0f..totalSecs.toFloat(),
+                                    totalTime = totalSecs.toDouble(),
+                                    bookmarks = book.bookmarks.map {
+                                        it.title = titleForAudioBookmark(book, it.position); it
+                                    },
+                                    chapters = book.chapters
+                                ))
+
+                                speakingCallback.onUpdateHighlightingUI(
+                                    PlayerViewModel.HighlightingUIState(
                                         currentWordIndexInFrame = currentWordIndexInFrame,
                                         currentFrame = words
                                     )
                                 )
+
                                 if (playOnReady) {
                                     playOnReady = false
                                     onPlay(source = PlaybackSource.AUTO_PLAY)
                                 }
+                            }
+
+                            if (book.viewState.value.totalTimeSeconds == 0L) {
+                                book.lazyCalculate { sendReady() }
+                            } else {
+                                sendReady()
                             }
                         }
 
@@ -164,6 +164,10 @@ class AudioBookPlayer(
         isPlaying = false
     }
 
+    override fun onUpdateSpeechRate(rate: Float) {
+        mediaPlayer?.playbackParameters = PlaybackParameters(rate)
+    }
+
     override fun onFastForward() {
         mediaPlayer?.apply {
             pause()
@@ -185,8 +189,9 @@ class AudioBookPlayer(
 
     override fun onUserChangePosition(value: Float) {
         mediaPlayer?.apply {
+            val wasPlaying = isPlaying
             pause()
-            playOnReady = true
+            playOnReady = wasPlaying
             val newPosition = (value.toInt() * 1000L).coerceAtMost(duration)
             seekTo(newPosition)
         }
@@ -205,40 +210,54 @@ class AudioBookPlayer(
 
     override fun updateCallback(callback: SpeakingCallBack) {
         this.speakingCallback = callback
-        val book = speakingCallback.book as AudioBook
-        
-        if (book.viewState.value.totalTimeSeconds == 0L) {
-            book.lazyCalculate {
-                val totalSecs = book.viewState.value.totalTimeSeconds
-                speakingCallback.onReady(uiState = PlayerViewModel.PlayerUIState(
-                    progress = book.lastPosition.toFloat(),
-                    totalTimeString = book.viewState.value.totalTime,
-                    isLoading = false,
-                    isSpeaking = isPlaying,
-                    progressTime = book.lastPosition.toDouble().formatSecondsToHMS(),
-                    sliderRange = 0f..totalSecs.toFloat(),
-                    totalTime = totalSecs.toDouble(),
-                    bookmarks = book.bookmarks.map {
-                        it.title = titleForAudioBookmark(book, it.position); it
-                    },
-                    chapters = book.chapters
-                ))
-            }
-        } else {
-            val totalSecs = book.viewState.value.totalTimeSeconds
-            speakingCallback.onReady(uiState = PlayerViewModel.PlayerUIState(
-                progress = book.lastPosition.toFloat(),
-                totalTimeString = book.viewState.value.totalTime,
+        val book = speakingCallback.book as? AudioBook ?: return
+
+        fun sendReady() {
+            val currentPos = mediaPlayer?.currentPosition ?: (book.lastPosition * 1000L)
+            val elapsedSeconds = currentPos / 1000.0
+
+            val textFrame = book.getCurrentText(elapsedMilliseconds = currentPos.toDouble())
+            val wordsInFrame = textFrame.text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+            val nextStart = textFrame.nextStartTime ?: (textFrame.startTimeMms + 30_000)
+            val currentStart = textFrame.startTimeMms
+
+            val currentWordIndexInFrame = getCurrentWordIndex(
+                currentPos,
+                wordsInFrame,
+                currentStart,
+                nextStart
+            )
+
+            val viewState = book.viewState.value
+            val totalSecs = viewState.totalTimeSeconds
+
+            val pState = PlayerViewModel.PlayerUIState(
+                progress = elapsedSeconds.toFloat(),
+                totalTimeString = viewState.totalTime,
                 isLoading = false,
                 isSpeaking = isPlaying,
-                progressTime = book.lastPosition.toDouble().formatSecondsToHMS(),
+                progressTime = elapsedSeconds.formatSecondsToHMS(),
                 sliderRange = 0f..totalSecs.toFloat(),
                 totalTime = totalSecs.toDouble(),
                 bookmarks = book.bookmarks.map {
                     it.title = titleForAudioBookmark(book, it.position); it
                 },
                 chapters = book.chapters
-            ))
+            )
+            speakingCallback.onReady(uiState = pState)
+
+            speakingCallback.onUpdateHighlightingUI(
+                PlayerViewModel.HighlightingUIState(
+                    currentWordIndexInFrame = currentWordIndexInFrame,
+                    currentFrame = wordsInFrame
+                )
+            )
+        }
+
+        if (book.viewState.value.totalTimeSeconds == 0L) {
+            book.lazyCalculate { sendReady() }
+        } else {
+            sendReady()
         }
     }
 
@@ -301,18 +320,22 @@ class AudioBookPlayer(
 
     override fun currentTimeElapsed(): Long {
         mediaPlayer?.let {
-            val book = speakingCallback.book as AudioBook
-            return (it.currentPosition / book.voiceRate).toLong()
+            return it.currentPosition
         } ?: return 0
+    }
+
+    override fun isLoading(): Boolean {
+        return mediaPlayer?.isLoading ?: false
     }
 
     private fun startProgressUpdates() {
         handler.post(object : Runnable {
             override fun run() {
-                mediaPlayer?.let {
+                mediaPlayer?.let { player ->
                     if (this@AudioBookPlayer.isPlaying) {
                         val book = speakingCallback.book as AudioBook
-                        val currentPositionMs = it.currentPosition
+
+                        val currentPositionMs = player.currentPosition
                         val elapsedSeconds = currentPositionMs / 1000.0
                         val elapsedTimeToShow = elapsedSeconds.formatSecondsToHMS()
 
@@ -322,7 +345,7 @@ class AudioBookPlayer(
                         if (frame.isEmpty() || textFrame.startTimeMms != currentStartTime) {
                             val words = textFrame.text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
                             frame = words
-                            nextPartStartTime = textFrame.nextStartTime ?: it.duration.toInt()
+                            nextPartStartTime = textFrame.nextStartTime ?: player.duration.toInt()
                             currentStartTime = textFrame.startTimeMms
                             hState = hState.copy(currentFrame = words)
                         }

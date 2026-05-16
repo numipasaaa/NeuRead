@@ -1,6 +1,7 @@
 package com.psimandan.neuread.ui.settings.components
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -8,11 +9,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +49,7 @@ fun VoicePickerPreview() {
             defaultVoice = NeuReadVoice("Voice 2", "en"),
             onVoiceSelected = {},
             onSave = {},
+            onDeleteVoice = {},
             onDismiss = {}
         )
     }
@@ -59,9 +63,10 @@ fun VoicePicker(
     defaultVoice: NeuReadVoice,
     onVoiceSelected: (NeuReadVoice) -> Unit,
     onSave: (NeuReadVoice) -> Unit,
+    onDeleteVoice: (NeuReadVoice) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val supportedVoices = remember {
+    val supportedVoices = remember(availableVoices, selectedLanguage) {
         availableVoices.filter {
             it.locale.languageId() == selectedLanguage.languageId()
         }
@@ -72,7 +77,7 @@ fun VoicePicker(
     }
 
     fun isSelected(voice: NeuReadVoice): Boolean {
-       return voice.name == selectedVoice.value.name
+        return voice.name == selectedVoice.value.name
     }
 
     AlertDialog(
@@ -88,28 +93,22 @@ fun VoicePicker(
             }
         },
         title = {
-
+            Text(
+                text = "Select Voice",
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Start,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         },
         text = {
             Column {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        text = "Select Voice",
-                        style = MaterialTheme.typography.headlineMedium,
-                        textAlign = TextAlign.Start,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                Spacer(Modifier.height(largeSpace))
                 LazyColumn {
                     items(supportedVoices.size) { index ->
                         val voice = supportedVoices[index]
                         ListItem(
                             colors = ListItemDefaults.colors(
                                 containerColor = if (isSelected(voice)) {
-                                    MaterialTheme.colorScheme.primary
+                                    MaterialTheme.colorScheme.primaryContainer
                                 } else {
                                     MaterialTheme.colorScheme.surface
                                 }
@@ -124,22 +123,46 @@ fun VoicePicker(
                                 Text(
                                     voice.name,
                                     color = if (isSelected(voice)) {
-                                        MaterialTheme.colorScheme.surface
+                                        MaterialTheme.colorScheme.onPrimaryContainer
                                     } else {
-                                        MaterialTheme.colorScheme.primary
+                                        MaterialTheme.colorScheme.onSurface
                                     }
                                 )
                             },
                             trailingContent = {
-                                Icon(
-                                    imageVector = Icons.Default.PlayCircleOutline,
-                                    contentDescription = "Play Sample",
-                                    tint = if (isSelected(voice)) {
-                                        MaterialTheme.colorScheme.surface
-                                    } else {
-                                        MaterialTheme.colorScheme.primary
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (voice.clonedVoice != null) {
+                                        IconButton(onClick = {
+                                            onDeleteVoice(voice)
+                                            if (isSelected(voice)) {
+                                                selectedVoice.value = supportedVoices.firstOrNull { it.name != voice.name } ?: defaultVoice
+                                            }
+                                        }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Delete Voice",
+                                                tint = if (isSelected(voice)) {
+                                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                                } else {
+                                                    MaterialTheme.colorScheme.error
+                                                }
+                                            )
+                                        }
                                     }
-                                )
+                                    IconButton(onClick = {
+                                        onVoiceSelected(voice)
+                                    }) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayCircleOutline,
+                                            contentDescription = "Play Sample",
+                                            tint = if (isSelected(voice)) {
+                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.primary
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         )
                         HorizontalDivider()

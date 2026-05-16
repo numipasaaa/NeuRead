@@ -17,6 +17,7 @@ import com.psimandan.neuread.data.model.AudioBook
 import com.psimandan.neuread.data.model.Book
 import com.psimandan.neuread.data.model.TextPart
 import com.psimandan.neuread.data.repository.LibraryRepository
+import com.psimandan.neuread.data.repository.PlayerStateRepository
 import com.psimandan.neuread.voice.NeuTTSApiClient
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -33,7 +34,8 @@ class DownloadAudioWorker @AssistedInject constructor(
     @Assisted private val context: Context,
     @Assisted workerParams: WorkerParameters,
     private val repository: LibraryRepository,
-    private val prefsStore: PrefsStore
+    private val prefsStore: PrefsStore,
+    private val playerStateRepository: PlayerStateRepository
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -47,8 +49,6 @@ class DownloadAudioWorker @AssistedInject constructor(
             setForeground(createForegroundInfo(0, bookTitle))
         } catch (e: Exception) {
             Timber.e(e, "Failed to set foreground info")
-            // On Android 14+ this might fail if not called immediately or if permissions are missing
-            // But we already requested POST_NOTIFICATIONS in MainActivity.
         }
         
         try {
@@ -68,6 +68,8 @@ class DownloadAudioWorker @AssistedInject constructor(
             val sentenceChunks = allSentences.chunked(chunkSize)
             
             for ((chunkIndex, chunk) in sentenceChunks.withIndex()) {
+                if (isStopped) return@withContext Result.failure()
+
                 var result: NeuTTSApiClient.SynthesisResult? = null
                 var attempts = 0
                 val maxAttempts = 3
@@ -82,8 +84,18 @@ class DownloadAudioWorker @AssistedInject constructor(
                                 refCodes = currentClonedVoice.codes
                             )
                         } else {
-                            val integratedVoiceName = voiceName.lowercase().split(" ").firstOrNull()
-                            apiClient.synthesizeBatch(chunk, integratedVoiceName)
+                            val isRomanianVoice = voiceName.contains("Petra", ignoreCase = true)
+                            
+                            val voiceParam = if (isRomanianVoice) {
+                                "petra"
+                            } else {
+                                voiceName.lowercase().split(" ").firstOrNull()
+                            }
+                            
+                            val langParam = if (isRomanianVoice) "ro" else book.language
+
+                            Timber.d("DownloadAudioWorker: voiceParam=$voiceParam, langParam=$langParam")
+                            apiClient.synthesizeBatch(chunk, voiceParam, langParam)
                         }
                     } catch (e: Exception) {
                         Timber.w(e, "Attempt $attempts failed for chunk $chunkIndex")
@@ -93,7 +105,9 @@ class DownloadAudioWorker @AssistedInject constructor(
                 }
                 
                 if (result != null && result.file.exists()) {
-                    tempFiles.add(result.file)
+                    val chunkFile = File(context.filesDir, "chunk_${bookId}_$chunkIndex.wav")
+                    result.file.copyTo(chunkFile, overwrite = true)
+                    tempFiles.add(chunkFile)
                     
                     val durations = result.durationsMs
                     chunk.forEachIndexed { index, sentence ->
@@ -110,26 +124,48 @@ class DownloadAudioWorker @AssistedInject constructor(
             }
             
             if (tempFiles.isNotEmpty()) {
-                val finalAudioFile = mergeAudioFiles(tempFiles)
+                val finalAudioFile = mergeAudioFiles(tempFiles, suffix = "final_${bookId}")
                 if (finalAudioFile != null) {
+                    // Fetch LATEST book state to get the most recent lastPosition (word index)
+                    val latestBook = repository.getBookById(bookId) as? Book ?: book
+
+                    // Convert TTS word index to seconds for the new AudioBook lastPosition
+                    val wordsForTime = latestBook.text.flatMap { it.split(Regex("\\s+")) }.filter { it.isNotEmpty() }
+                    var totalChars = 0
+                    for (i in 0 until minOf(latestBook.lastPosition, wordsForTime.size)) {
+                        totalChars += wordsForTime[i].length + 1
+                    }
+                    val elapsedSeconds = (totalChars * 0.080) / latestBook.voiceRate
+
                     val audioBook = AudioBook(
-                        id = book.id,
-                        title = book.title,
-                        author = book.author,
-                        language = book.language,
-                        voiceRate = book.voiceRate,
-                        lastPosition = 0,
+                        id = latestBook.id,
+                        title = latestBook.title,
+                        author = latestBook.author,
+                        language = latestBook.language,
+                        voiceRate = latestBook.voiceRate,
+                        lastPosition = elapsedSeconds.toInt(),
                         updated = System.currentTimeMillis(),
-                        bookmarks = book.bookmarks.toMutableList(),
-                        chapters = book.chapters,
+                        bookmarks = latestBook.bookmarks.toMutableList(),
+                        chapters = latestBook.chapters,
                         parts = audioParts,
                         audioFilePath = finalAudioFile.absolutePath,
                         voice = voiceName,
                         model = "NeuTTS",
-                        bookSource = "Cloned"
+                        bookSource = "Cloned",
+                        originalText = latestBook.text
                     )
                     repository.updateBook(audioBook)
-                    repository.selectBook(audioBook.id)
+                    
+                    // If the current book being played is this book, update it in the player state
+                    // This will trigger the PlayerViewModel to switch players
+                    val currentBook = playerStateRepository.getCurrentBook().first()
+                    if (currentBook?.id == book.id) {
+                        playerStateRepository.setCurrentBook(audioBook)
+                    }
+
+                    // Cleanup chunk files
+                    tempFiles.forEach { it.delete() }
+
                     return@withContext Result.success()
                 }
             }
@@ -187,8 +223,9 @@ class DownloadAudioWorker @AssistedInject constructor(
         return ForegroundInfo(notificationId, notification, type)
     }
 
-    private fun mergeAudioFiles(files: List<File>): File? {
-        val outputFile = File(context.filesDir, "audio_book_${System.currentTimeMillis()}.wav")
+    private fun mergeAudioFiles(files: List<File>, suffix: String = ""): File? {
+        val fileName = "audio_book_${suffix}_${System.currentTimeMillis()}.wav"
+        val outputFile = File(context.filesDir, fileName)
         try {
             var totalDataSize = 0L
             var wavHeader: ByteArray? = null
@@ -207,7 +244,6 @@ class DownloadAudioWorker @AssistedInject constructor(
                             totalDataSize += bytesRead
                         }
                     }
-                    file.delete()
                 }
             }
 

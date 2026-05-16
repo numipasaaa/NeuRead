@@ -41,6 +41,42 @@ class VoiceRepository @Inject constructor(
             null
         ).toNeuReadVoice()
 
+        val mateoVoice = NeuReadVoice(
+            name = "Mateo (AI)",
+            language = "es_ES",
+            locale = Locale.forLanguageTag("es-ES"),
+            requiresNetworkConnection = true,
+            quality = 407,
+            latency = 200
+        )
+
+        val gretaVoice = NeuReadVoice(
+            name = "Greta (AI)",
+            language = "de_DE",
+            locale = Locale.forLanguageTag("de-DE"),
+            requiresNetworkConnection = true,
+            quality = 408,
+            latency = 200
+        )
+
+        val julietteVoice = NeuReadVoice(
+            name = "Juliette (AI)",
+            language = "fr_FR",
+            locale = Locale.forLanguageTag("fr-FR"),
+            requiresNetworkConnection = true,
+            quality = 409,
+            latency = 200
+        )
+
+        val petraVoice = NeuReadVoice(
+            name = "Petra (AI)",
+            language = "ro_RO",
+            locale = Locale.forLanguageTag("ro-RO"),
+            requiresNetworkConnection = true,
+            quality = 410,
+            latency = 200
+        )
+
         // 3. Fetch cloned voices from PrefsStore
         val clonedVoices = prefsStore.getClonedVoices().first().map { voice ->
             NeuReadVoice(
@@ -55,7 +91,7 @@ class VoiceRepository @Inject constructor(
         }
 
         // 4. Combine them and save to state
-        availableVoices = nativeVoices + joVoice + daveVoice + clonedVoices.toSet()
+        availableVoices = nativeVoices + joVoice + daveVoice + mateoVoice + gretaVoice + julietteVoice + petraVoice + clonedVoices.toSet()
         return availableVoices
     }
 

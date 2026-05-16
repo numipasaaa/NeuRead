@@ -33,7 +33,8 @@ sealed class NeuReadBook {
         val isCalculating: Boolean = true,
         val progressTime: String = "00:00",
         val totalTime: String = "00:00",
-        val totalTimeSeconds: Long = 0
+        val totalTimeSeconds: Long = 0,
+        val actualDurationSeconds: Long = 0
     )
 
     @Transient

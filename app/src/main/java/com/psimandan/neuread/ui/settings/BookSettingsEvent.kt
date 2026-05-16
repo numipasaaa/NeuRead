@@ -24,6 +24,7 @@ sealed class BookSettingsEvent {
     data object DeleteAudio : BookSettingsEvent()
     data class ToggleDyslexicFont(val enabled: Boolean) : BookSettingsEvent()
     data class ToggleHighlighting(val enabled: Boolean) : BookSettingsEvent()
+    data class DeleteVoice(val voice: NeuReadVoice) : BookSettingsEvent()
 }
 
 fun BookSettingsEvent.onEvent(model: BookSettingsViewModel, onNavigateBack: (NeuReadBook?) -> Unit) {
@@ -62,5 +63,9 @@ fun BookSettingsEvent.onEvent(model: BookSettingsViewModel, onNavigateBack: (Neu
         BookSettingsEvent.DeleteAudio -> model.deleteAudio()
         is BookSettingsEvent.ToggleDyslexicFont -> model.toggleDyslexicFont(this.enabled)
         is BookSettingsEvent.ToggleHighlighting -> model.toggleHighlighting(this.enabled)
+        is BookSettingsEvent.DeleteVoice -> {
+            // Handled via VoiceSelectorViewModel in the view for now, 
+            // but we could also move it to BookSettingsViewModel if needed.
+        }
     }
 }

@@ -1,26 +1,17 @@
 package com.psimandan.neuread.ui.settings.components
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -36,11 +27,6 @@ fun ConfirmDeleteDialogDarkThemePreview() {
     NeuReadTheme(darkTheme = true) {
         val test = Locale.getDefault()
         ConfirmDeleteDialog(
-            pincode = "",
-            buttonEnabled = false,
-            onValueChange = {
-
-            },
             onDeleteClicked = {
 
             },
@@ -79,81 +65,96 @@ fun ErrorMessageDialogDarkThemePreview() {
     }
 }
 
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ConfirmDeleteDialog(
-    pincode: String,
-    buttonEnabled: Boolean,
-    onValueChange: (String) -> Unit,
     onDeleteClicked: () -> Unit,
     onDismissRequest: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismissRequest,
-        confirmButton = {
-            NiceButton(
-                enabled = buttonEnabled,
-                title = "DELETE",
-                titleColor = MaterialTheme.colorScheme.onError,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.width(160.dp),
-                clickHandler = onDeleteClicked
-            )
-        },
-        dismissButton = {
-            NiceButton(
-                title = "Cancel",
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                titleColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(160.dp),
-                clickHandler = onDismissRequest
-            )
-        },
-        title = {
-            Text(
-                text = "You cannot undo this action!",
-                style = MaterialTheme.typography.headlineMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-        },
-        text = @Composable {
+        confirmButton = { },
+        title = null,
+        text = {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .padding(
-                        largeSpace
-                    )
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
             ) {
-                val focusManager = LocalFocusManager.current
-                focusManager.moveFocus(FocusDirection.Enter)
-                OutlinedTextField(
-                    value = pincode,
-                    placeholder = {
-                        Text(
-                            text = "Input word delete",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.headlineSmall.copy(
-                        color = MaterialTheme.colorScheme.onSurface
+                Text(
+                    text = "Are you sure\nyou want to\ndelete this\nbook?",
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontSize = 22.sp,
+                        lineHeight = 28.sp,
+                        fontWeight = FontWeight.W400,
+                        color = Color.White
                     ),
-                    onValueChange = onValueChange,
-                    keyboardOptions = KeyboardOptions(
-                        imeAction = ImeAction.Done,
-                        keyboardType = KeyboardType.Text
-                    ),
-                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                    colors = TextFieldDefaults.outlinedTextFieldColors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                    )
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(smallSpace))
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "You cannot undo this action!",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.W300,
+                        color = Color.White.copy(alpha = 0.6f)
+                    ),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Button(
+                    onClick = onDeleteClicked,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(percent = 50),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFF3BDB7),
+                        contentColor = Color.Black
+                    )
+                ) {
+                    Text(
+                        text = "DELETE",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.W600,
+                            fontSize = 16.sp
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = onDismissRequest,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(percent = 50),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF2A2A2A),
+                        contentColor = Color.White.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Text(
+                        text = "Cancel",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.W500,
+                            fontSize = 16.sp
+                        )
+                    )
+                }
             }
-        }
+        },
+        containerColor = Color(0xFF1D2328),
+        shape = RoundedCornerShape(32.dp)
     )
 }
 

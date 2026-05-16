@@ -46,33 +46,37 @@ data class Book(
         _state.value = _state.value.copy(isCalculating = true)
         coroutineScope.launch(Dispatchers.IO) {
             val words = text.flatMap { it.split(Regex("\\s+")) }.filter { it.isNotEmpty() }
-            val (totalSeconds, wordsCount) = calculateTotalDuration(words)
+            val totalSeconds = calculateTotalDuration(words)
             val elapsedSeconds = calculateElapsedTime(words, lastPosition)
 
             withContext(Dispatchers.Main) {
                 _state.value = BookUIState(
-                    isCompleted = (lastPosition + 5) >= wordsCount,
+                    isCompleted = (lastPosition + 5) >= words.size,
                     isCalculating = false,
                     progressTime = elapsedSeconds.formatSecondsToHMS(),
                     totalTime = totalSeconds.formatSecondsToHMS(),
-                    totalTimeSeconds = wordsCount.toLong() //for text book we measure in words
+                    totalTimeSeconds = totalSeconds.toLong()
                 )
                 completion()
             }
         }
     }
 
-    private fun calculateTotalDuration(words: List<String>): Pair<Double, Int> {
-
-        val totalSeconds = (words.joinToString(" ").length * SECONDS_PER_CHARACTER) / voiceRate.toDouble()
-        return Pair(totalSeconds, words.size)
+    private fun calculateTotalDuration(words: List<String>): Double {
+        var totalChars = 0
+        for (word in words) {
+            totalChars += word.length + 1
+        }
+        return (totalChars * SECONDS_PER_CHARACTER) / voiceRate
     }
 
 
     private fun calculateElapsedTime(words: List<String>, progress: Int): Double {
-        return (words.take(progress)
-            .joinToString(" ").length * SECONDS_PER_CHARACTER) / voiceRate.toDouble()
-
+        var totalChars = 0
+        for (i in 0 until minOf(progress, words.size)) {
+            totalChars += words[i].length + 1
+        }
+        return (totalChars * SECONDS_PER_CHARACTER) / voiceRate
     }
 
     companion object {

@@ -12,10 +12,17 @@ class PlayerStateRepositoryImpl @Inject constructor() : PlayerStateRepository {
     private val _currentBook = MutableStateFlow<NeuReadBook?>(null)
     private val _playbackState = MutableStateFlow(PlaybackState())
     private val _currentPosition = MutableStateFlow(0L)
-    
+    private val _speechRate = MutableStateFlow<Float?>(null)
+
     override fun getCurrentBook(): Flow<NeuReadBook?> = _currentBook.asStateFlow()
     override fun getPlaybackState(): Flow<PlaybackState> = _playbackState.asStateFlow()
     override fun getCurrentPosition(): Flow<Long> = _currentPosition.asStateFlow()
+
+    override fun getSpeechRate(): Flow<Float?> = _speechRate.asStateFlow()
+
+    override fun updateSpeechRate(rate: Float) {
+        _speechRate.value = rate
+    }
     
     override suspend fun updatePlaybackState(state: PlaybackState) {
         _playbackState.value = state

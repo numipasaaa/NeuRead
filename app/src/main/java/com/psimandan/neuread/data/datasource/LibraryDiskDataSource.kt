@@ -29,7 +29,7 @@ class LibraryDiskDataSource @Inject constructor(@ApplicationContext private val 
     override fun loadBooks(): List<NeuReadBook> {
         val booksMap = mutableMapOf<String, NeuReadBook>()
         val json = Json { ignoreUnknownKeys = true }
-        
+
         // Load regular books
         libraryDir.listFiles()?.forEach { file ->
             try {
@@ -40,7 +40,7 @@ class LibraryDiskDataSource @Inject constructor(@ApplicationContext private val 
                 Timber.e(e, "Error loading book: ${file.name}")
             }
         }
-        
+
         // Load audiobooks (priority over regular books)
         audiobooksDir.listFiles()?.forEach { file ->
             try {

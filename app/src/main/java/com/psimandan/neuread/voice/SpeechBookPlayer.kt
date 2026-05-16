@@ -116,17 +116,15 @@ class SpeechBookPlayer(
                 currentWordIndex = book.lastPosition
                 selectedSpeechRate = book.voiceRate
 
-                val hState = speakingCallback.highlightingState.value
-                speakingCallback.onUpdateHighlightingUI(hState.copy(currentWordIndexInFrame = 0))
-
                 book.lazyCalculate {
                     val viewState = book.viewState.value
+                    val secondsElapsed = calculateElapsedTime(currentWordIndex)
                     speakingCallback.onReady(
                         uiState = PlayerUIState(
-                            progress = book.lastPosition.toFloat(),
+                            progress = secondsElapsed.toFloat(),
                             totalTimeString = viewState.totalTime,
                             isLoading = false,
-                            progressTime = viewState.progressTime,
+                            progressTime = secondsElapsed.formatSecondsToHMS(),
                             sliderRange = 0f..viewState.totalTimeSeconds.toFloat(),
                             totalTime = viewState.totalTimeSeconds.toDouble(),
                             bookmarks = book.bookmarks.map {
@@ -161,20 +159,17 @@ class SpeechBookPlayer(
                 player.setSpeechRate(book.voiceRate)
                 player.setOnUtteranceProgressListener(ttsListener)
 
-                val hState = speakingCallback.highlightingState.value
-                speakingCallback.onUpdateHighlightingUI(
-                    hState.copy(currentWordIndexInFrame = 0)
-                )
-
                 book.lazyCalculate {
+                    val viewState = book.viewState.value
+                    val secondsElapsed = calculateElapsedTime(currentWordIndex)
                     speakingCallback.onReady(
                         uiState = PlayerUIState(
-                            progress = book.lastPosition.toFloat(),
-                            totalTimeString = book.viewState.value.totalTime,
+                            progress = secondsElapsed.toFloat(),
+                            totalTimeString = viewState.totalTime,
                             isLoading = false,
-                            progressTime = book.viewState.value.progressTime,
-                            sliderRange = 0f..book.viewState.value.totalTimeSeconds.toFloat(),
-                            totalTime = book.viewState.value.totalTimeSeconds.toDouble(),
+                            progressTime = secondsElapsed.formatSecondsToHMS(),
+                            sliderRange = 0f..viewState.totalTimeSeconds.toFloat(),
+                            totalTime = viewState.totalTimeSeconds.toDouble(),
                             bookmarks = book.bookmarks.map {
                                 it.title = titleForBookmark(it.position); it
                             },
@@ -194,7 +189,7 @@ class SpeechBookPlayer(
             Timber.d("onRangeStart: start=$start end=$end frame=$frame")
             val wordIdxInFrame = wordOffsets.indexOfLast { it <= start }.coerceAtLeast(0)
             val globalWordIndex = frameStartIndex + wordIdxInFrame
-            
+
             val hState = speakingCallback.highlightingState.value
             val book = speakingCallback.book as Book
             val secondsElapsed = calculateElapsedTime(globalWordIndex)
@@ -207,7 +202,7 @@ class SpeechBookPlayer(
                     updated = System.currentTimeMillis()
                 ),
                 pUIState = speakingCallback.viewState.value.copy(
-                    progress = globalWordIndex.toFloat(),
+                    progress = secondsElapsed.toFloat(),
                     progressTime = secondsElapsed.formatSecondsToHMS()
                 ),
                 hUIState = hState.copy(
@@ -265,10 +260,15 @@ class SpeechBookPlayer(
         }
     }
 
+    private var synthesisJob: kotlinx.coroutines.Job? = null
+
     fun speak(text: String, frameSize: Int = 0, frame: List<String> = emptyList()) {
         if (voice.isNetworkConnectionRequired) {
+            synthesisJob?.cancel()
             // Route to Server API
-            playerScope.launch {
+            synthesisJob = playerScope.launch {
+                if (!isPlaying) return@launch
+
                 // Show loading indicator
                 speakingCallback.onUpdateUI(
                     speakingCallback.viewState.value.copy(
@@ -281,6 +281,7 @@ class SpeechBookPlayer(
                 val audioFile = if (!voice.name.contains("NeuTTS", ignoreCase = true)) {
                     val clonedVoices = prefsStore.getClonedVoices().first()
                     val currentClonedVoice = clonedVoices.find { it.name == voice.name }
+                    
                     if (currentClonedVoice != null) {
                         neuTtsApiClient?.cloneWithCodes(
                             text = text,
@@ -288,10 +289,36 @@ class SpeechBookPlayer(
                             refCodes = currentClonedVoice.codes
                         )
                     } else {
-                        neuTtsApiClient?.synthesizeSpeech(text)
+                        val book = speakingCallback.book as? Book
+                        
+                        // LOG THE FULL STATE TO SEE WHY IT'S FAILING
+                        Timber.d("NeuTTS DECISION: voice.name=${voice.name}, book.lang=${book?.language}")
+
+                        val isRomanianVoice = voice.name.contains("Petra", ignoreCase = true)
+                        
+                        // Voice name for the server
+                        val voiceParam = if (isRomanianVoice) {
+                            "petra"
+                        } else {
+                            voice.name.lowercase().removeSuffix(" (ai)").trim()
+                        }
+
+                        // Force language to "ro" for the Romanian Petra voice to ensure finetune activation
+                        val langParam = if (isRomanianVoice) "ro" else (book?.language ?: voice.locale.language)
+                        
+                        Timber.d("NeuTTS FINAL REQUEST: voiceParam=$voiceParam, langParam=$langParam")
+                        neuTtsApiClient?.synthesizeSpeech(text, voiceParam, langParam)
                     }
                 } else {
-                    neuTtsApiClient?.synthesizeSpeech(text)
+                    val book = speakingCallback.book as? Book
+                    neuTtsApiClient?.synthesizeSpeech(text, null, book?.language)
+                }
+
+                if (!isPlaying) {
+                    speakingCallback.onUpdateUI(
+                        speakingCallback.viewState.value.copy(isLoading = false, isSpeaking = false)
+                    )
+                    return@launch
                 }
 
                 // Hide loading indicator
@@ -299,10 +326,10 @@ class SpeechBookPlayer(
                     speakingCallback.viewState.value.copy(isLoading = false, isSpeaking = true)
                 )
 
-                if (audioFile != null && isPlaying) {
+                if (audioFile != null) {
                     playWavFile(audioFile, frameSize, frame)
                 } else {
-                    if (audioFile == null) Timber.e("Synthesis failed (audioFile is null)")
+                    Timber.e("Synthesis failed (audioFile is null)")
                     speakingCallback.onStop()
                 }
             }
@@ -317,8 +344,11 @@ class SpeechBookPlayer(
     }
 
     private fun calculateElapsedTime(progress: Int): Double {
-        val chars = words.take(progress).joinToString(" ").length
-        val seconds = (chars * SECONDS_PER_CHARACTER) / selectedSpeechRate
+        var totalChars = 0
+        for (i in 0 until min(progress, words.size)) {
+            totalChars += words[i].length + 1
+        }
+        val seconds = (totalChars * SECONDS_PER_CHARACTER) / selectedSpeechRate
         return seconds
     }
 
@@ -428,42 +458,75 @@ class SpeechBookPlayer(
     }
 
     override fun currentTimeElapsed(): Long {
-        return calculateElapsedTime(currentWordIndex).toLong() * 1000L
+        if (voice.isNetworkConnectionRequired) {
+            val baseTime = (calculateElapsedTime(frameStartIndex) * 1000).toLong()
+            val frameOffset = mediaPlayer?.let { if (it.isPlaying) it.currentPosition.toLong() else 0L } ?: 0L
+            return baseTime + frameOffset
+        }
+        return (calculateElapsedTime(currentWordIndex) * 1000).toLong()
     }
 
     override fun onPlayFromBookmark(position: Int) {
-        isPlaying = false
-        onStopSpeaking()
-        onUserChangePosition(position.toFloat())
-        if (isSpeaking()) return
-        onPlay(source = PlaybackSource.BOOKMARK)
+        seekToWordIndex(position, PlaybackSource.BOOKMARK)
     }
 
     override fun updateCallback(callback: SpeakingCallBack) {
         this.speakingCallback = callback
         val book = speakingCallback.book as? Book ?: return
-        book.lazyCalculate {
+        this.selectedSpeechRate = book.voiceRate
+        
+        fun sendReady() {
             val viewState = book.viewState.value
-            speakingCallback.onReady(
-                uiState = PlayerUIState(
-                    progress = book.lastPosition.toFloat(),
-                    totalTimeString = viewState.totalTime,
-                    isLoading = false,
-                    isSpeaking = isPlaying,
-                    progressTime = viewState.progressTime,
-                    sliderRange = 0f..viewState.totalTimeSeconds.toFloat(),
-                    totalTime = viewState.totalTimeSeconds.toDouble(),
-                    bookmarks = book.bookmarks.map {
-                        it.title = titleForBookmark(it.position); it
-                    },
-                    chapters = book.chapters
+            val secondsElapsed = calculateElapsedTime(currentWordIndex)
+            val pState = PlayerUIState(
+                progress = secondsElapsed.toFloat(),
+                totalTimeString = viewState.totalTime,
+                isLoading = false,
+                isSpeaking = isPlaying,
+                progressTime = secondsElapsed.formatSecondsToHMS(),
+                sliderRange = 0f..viewState.totalTimeSeconds.toFloat(),
+                totalTime = viewState.totalTimeSeconds.toDouble(),
+                bookmarks = book.bookmarks.map {
+                    it.title = titleForBookmark(it.position); it
+                },
+                chapters = book.chapters
+            )
+            speakingCallback.onReady(uiState = pState)
+            
+            // Sync highlighting state with accurate current word within frame
+            val toIndex = minOf(frameStartIndex + FRAME_SIZE, totalWords)
+            val frame = if (words.isNotEmpty() && frameStartIndex < words.size) {
+                words.subList(frameStartIndex, toIndex)
+            } else {
+                emptyList()
+            }
+            
+            val wordIdxInFrame = (currentWordIndex - frameStartIndex).coerceIn(0, (frame.size - 1).coerceAtLeast(0))
+            
+            speakingCallback.onUpdateHighlightingUI(
+                HighlightingUIState(
+                    currentWordIndexInFrame = wordIdxInFrame,
+                    currentFrame = frame
                 )
             )
         }
+
+        if (book.viewState.value.totalTimeSeconds == 0L) {
+            book.lazyCalculate { sendReady() }
+        } else {
+            sendReady()
+        }
     }
+
+    override fun isLoading(): Boolean = synthesisJob?.isActive == true
 
     override fun onStopSpeaking() {
         isPlaying = false
+        synthesisJob?.cancel()
+        synthesisJob = null
+        speakingCallback.onUpdateUI(
+            speakingCallback.viewState.value.copy(isLoading = false, isSpeaking = false)
+        )
         speakingCallback.onStop()
         textToSpeech?.stop()
         mediaPlayer?.stop()
@@ -515,7 +578,7 @@ class SpeechBookPlayer(
                     updated = System.currentTimeMillis()
                 ),
                 pUIState = speakingCallback.viewState.value.copy(
-                    progress = startIndexOfFrame.toFloat(),
+                    progress = secondsElapsed.toFloat(),
                     progressTime = secondsElapsed.formatSecondsToHMS(),
                     isSpeaking = true,
                     isLoading = false
@@ -566,20 +629,44 @@ class SpeechBookPlayer(
         audioTrack = null
     }
 
+    override fun onUpdateSpeechRate(rate: Float) {
+        selectedSpeechRate = rate
+        textToSpeech?.setSpeechRate(rate)
+    }
+
     override fun onFastForward() {
-        onUserChangePosition(currentWordIndex.toFloat() + (SEEK_STEP_TEXT))
+        val currentSecs = currentTimeElapsed() / 1000.0
+        onUserChangePosition((currentSecs + 10).toFloat())
     }
 
     override fun onRewind() {
-        onUserChangePosition(currentWordIndex.toFloat() - (SEEK_STEP_TEXT))
+        val currentSecs = currentTimeElapsed() / 1000.0
+        onUserChangePosition((currentSecs - 10).toFloat())
+    }
+
+    fun wordIndexFromSeconds(seconds: Double): Int {
+        val targetChars = (seconds * selectedSpeechRate) / SECONDS_PER_CHARACTER
+        var currentChars = 0
+        for (i in words.indices) {
+            if (currentChars >= targetChars) return i
+            currentChars += words[i].length + 1 // +1 for space
+        }
+        return words.size
     }
 
     override fun onUserChangePosition(value: Float) {
+        val wasPlaying = isPlaying
+        val index = wordIndexFromSeconds(value.toDouble())
+        seekToWordIndex(index, PlaybackSource.SEEK, wasPlaying)
+    }
+
+    private fun seekToWordIndex(index: Int, source: PlaybackSource, autoPlay: Boolean = true) {
         isPlaying = false
         onStopSpeaking()
-        currentWordIndex = value.coerceIn(0f, (totalWords - 1).coerceAtLeast(0).toFloat()).toInt()
-        val hState = speakingCallback.highlightingState.value
 
+        currentWordIndex = index.coerceIn(0, (totalWords - 1).coerceAtLeast(0))
+
+        val hState = speakingCallback.highlightingState.value
         val book = speakingCallback.book as Book
         val elapsedSeconds = calculateElapsedTime(progress = currentWordIndex)
 
@@ -589,19 +676,19 @@ class SpeechBookPlayer(
                 updated = System.currentTimeMillis()
             ),
             pUIState = speakingCallback.viewState.value.copy(
-                progress = currentWordIndex.toFloat(),
+                progress = elapsedSeconds.toFloat(),
                 progressTime = elapsedSeconds.formatSecondsToHMS()
             ),
             hUIState = hState.copy(
                 currentWordIndexInFrame = 0
             )
         )
-        if (isSpeaking()) return
-        onPlay(source = PlaybackSource.SEEK)
+        if (isSpeaking() || !autoPlay) return
+        onPlay(source = source)
     }
 
     override fun onJumpToChapter(position: Int) {
-        onUserChangePosition(position.toFloat())
+        seekToWordIndex(position, PlaybackSource.OTHER)
     }
 
     private fun calculateWordOffsets(words: List<String>): List<Int> {

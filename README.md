@@ -1,24 +1,25 @@
-# RunAndRead Android
+# NeuRead Android
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-Android-green.svg)](https://www.android.com/)
 [![Language](https://img.shields.io/badge/Language-Kotlin-blue.svg)](https://kotlinlang.org/)
-[![Version](https://img.shields.io/badge/Version-1.9-orange.svg)](https://play.google.com/store/apps/details?id=com.answersolutions.runandread)
+[![Version](https://img.shields.io/badge/Version-1.9-orange.svg)](https://play.google.com/store/apps/details?id=com.psimandan.neuread)
 
-**Related Projects:** [Run&Read Studio](https://github.com/sergenes/runandread-studio) | [iOS Version](https://github.com/answersolutionsapps/runandread-ios) | [Audiobook Pipeline](https://github.com/sergenes/runandread-audiobook)
+Ultimate Text-to-Speech and Audiobook Player for Android - Listen to your books with high-quality AI voices!
 
-Ultimate Text-to-Speech and Audiobook Player for Android - Listen to your books while running, exercising, or on the go!
-
-<img src="app/src/main/ic_launcher-playstore.png" width="100" height="100" alt="RunAndRead Logo">
+<img src="app/src/main/ic_launcher-playstore.png" width="100" height="100" alt="NeuRead Logo">
 
 ## Overview
 
-RunAndRead is an Android application that converts text to speech, allowing you to listen to your books while running, exercising, or on the go. It supports various e-book formats and provides a clean, intuitive interface for managing your library and controlling playback.
+NeuRead is an Android application that converts text to speech using state-of-the-art AI models. It allows you to listen to your books while running, exercising, or on the go. It supports various e-book formats and provides a clean, intuitive interface for managing your library and controlling playback with both local TTS and cloud-based AI voices.
 
 ## Features
 
+- **Advanced AI Voices**: High-quality, natural-sounding voices (Mateo, Greta, Juliette, Jo, Dave)
+- **Voice Cloning**: Create your own digital voice by recording a short sample (supports English, Spanish, French, German, and Romanian)
 - **Text-to-Speech Playback**: Convert any text or e-book to speech
-- **Multiple Voice Support**: Choose from various TTS voices
+- **Seamless Transitions**: Switch between local TTS and high-quality AI audio tracks instantly
+- **MP3 Audiobook Support**: Listen to high-quality audiobooks generated using the RANDR pipeline
 - **Bookmarks**: Save and jump to specific positions in your books
 - **Speed Control**: Adjust playback speed to your preference
 - **Library Management**: Organize your books in a clean, intuitive interface
@@ -26,23 +27,16 @@ RunAndRead is an Android application that converts text to speech, allowing you 
 - **Background Playback**: Continue listening even when the app is in the background
 - **Media Controls**: Control playback from your lock screen or notification
 - **Highlighting**: Follow along with highlighted text as it's being read
-- **MP3 Audiobook Support**: Listen to high-quality audiobooks generated using the RANDR pipeline
 
 **Download and use the app for free!**
 
 ## Installation
 
-### Download from App Stores
-
-**iOS**: [RunAndRead for iOS](https://apps.apple.com/us/app/run-read-listen-on-the-go/id6741396289)
-
-**Android**: [RunAndRead for Android](https://play.google.com/store/apps/details?id=com.answersolutions.runandread)
-
 ### From Source
 
 1. Clone the repository:
    ```
-   git clone https://github.com/answersolutions/runandread-android.git
+   git clone https://github.com/numipasaaa/NeuRead.git
    ```
 
 2. Open the project in Android Studio
@@ -53,7 +47,7 @@ RunAndRead is an Android application that converts text to speech, allowing you 
 
 ## Architecture
 
-RunAndRead follows the MVVM (Model-View-ViewModel) architecture pattern and is built with modern Android development tools and libraries.
+NeuRead follows the MVVM (Model-View-ViewModel) architecture pattern and is built with modern Android development tools and libraries.
 
 ### High-Level Architecture
 
@@ -77,6 +71,7 @@ graph TB
 
     subgraph "TTS Layer"
         TTS[Text-to-Speech Engine]
+        AI[NeuTTS Cloud API]
     end
 
     subgraph "Data Layer"
@@ -103,6 +98,8 @@ graph TB
     BP --> ABP
     BP --> SBP
     SBP --> TTS
+    SBP --> AI
+    ABP --> AI
     REPO --> DS
 ```
 
@@ -110,6 +107,7 @@ graph TB
 
 - **Clean Architecture**: Separation of concerns with distinct layers
 - **MVVM Pattern**: Reactive UI with ViewModels managing state
+- **Hybrid Playback Engine**: Seamlessly switches between local TTS (`SpeechBookPlayer`) and AI Audio (`AudioBookPlayer`)
 - **Dependency Injection**: Hilt for clean dependency management
 - **Single Responsibility**: Each component has a focused purpose
 - **Testable Design**: Interfaces and dependency injection enable easy testing
@@ -121,18 +119,32 @@ For detailed architecture documentation with comprehensive diagrams, see [ARCHIT
 
 - **Kotlin**: Modern, concise programming language for Android
 - **Jetpack Compose**: Declarative UI toolkit for building native Android UI
-- **Coroutines**: For asynchronous programming
+- **Coroutines & Flow**: For reactive asynchronous programming
 - **Hilt**: For dependency injection
-- **Media3 (ExoPlayer)**: For audio playback
-- **Android TTS**: For text-to-speech conversion
+- **Media3 (ExoPlayer)**: For high-precision audio playback
+- **Android TTS & NeuTTS API**: For multi-engine speech conversion
 - **Jetpack Navigation**: For in-app navigation
-- **DataStore**: For preferences storage
+- **DataStore**: For preferences and cloned voice storage
 
-## Dependencies
+## NeuTTS Server Setup
 
-[RunAndRead Audiobook](https://github.com/sergenes/runandread-audiobook) is an open-source project for generating high-quality audiobooks using models like **Zyphra/Zonos**, **Kokoro-82M**, and others.
+### Prerequisites
 
-For instructions on generating your own audiobooks using the RANDR pipeline, see the [RANDR documentation](https://github.com/sergenes/runandread-audiobook/blob/main/RANDR.md).
+- Python 3.10+
+- NVIDIA GPU with CUDA support (recommended for performance)
+- At least 8GB of VRAM
+
+### Running the Server
+
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Start the FastAPI server:**
+   ```bash
+   python server.py
+   ```
 
 
 ## Contributing
@@ -142,14 +154,14 @@ We welcome contributions from the community! Whether you're fixing bugs, adding 
 ### Development Setup
 
 1. **Prerequisites**
-   - Android Studio Arctic Fox or later
+   - Android Studio Electric Eel or later
    - JDK 11 or later
    - Android SDK with API level 24+
 
 2. **Clone and Setup**
    ```bash
-   git clone https://github.com/answersolutions/runandread-android.git
-   cd runandread-android
+   git clone https://github.com/numipasaaa/NeuRead.git
+   cd NeuRead
    ```
 
 3. **Open in Android Studio**
@@ -194,9 +206,6 @@ We welcome contributions from the community! Whether you're fixing bugs, adding 
 - **Localization**: Translations for different languages
 - **Accessibility**: Improving app accessibility for all users
 
-## Contact
-
-- **[Sergey N](https://www.linkedin.com/in/sergey-neskoromny/)** - Connect and follow me on LinkedIn.
 
 ## License
 

@@ -30,7 +30,8 @@ data class AudioBook(
     val voice: String,
     val model: String,
     @SerialName("book_source")
-    val bookSource: String
+    val bookSource: String,
+    val originalText: List<String> = emptyList()
 ) : NeuReadBook() {
 
     override fun playerType(): BookPlayerType = BookPlayerType.AUDIO

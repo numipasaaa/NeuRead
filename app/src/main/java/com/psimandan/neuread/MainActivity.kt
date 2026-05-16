@@ -129,10 +129,12 @@ class MainActivity : ComponentActivity() {
                                     if (playerUiState.isSpeaking) playerViewModel.onPause()
                                     else playerViewModel.onPlay()
                                 },
+                                onRewindClick = { playerViewModel.fastRewind() },
+                                onForwardClick = { playerViewModel.fastForward() },
                                 onClick = {
                                     navigationViewModel.navigateTo(Screen.Player)
                                 },
-                                modifier = Modifier.padding(bottom = 8.dp)
+                                modifier = Modifier.padding(bottom = 0.dp)
                             )
                         }
                     }
@@ -202,6 +204,7 @@ class MainActivity : ComponentActivity() {
                         composable(Screen.BookSettings.route) {
                             BookSettingsScreenView(
                                 onBookDeleted = {
+                                    playerViewModel.onClose()
                                     navigationViewModel.resetAndNavigateTo(Screen.Home)
                                 },
                                 onNavigateBack = { book ->

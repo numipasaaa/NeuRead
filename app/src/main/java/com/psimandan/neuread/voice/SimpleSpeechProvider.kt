@@ -100,9 +100,18 @@ class SimpleSpeechProvider(
                             refCodes = currentClonedVoice.codes
                         )?.file
                     } else {
-                        // Check if it's one of the integrated voices (Jo, Dave)
-                        val voiceName = currentVoice.name.lowercase().split(" ").firstOrNull()
-                        apiClient.synthesizeSpeech(text, voiceName)
+                        val isRomanianVoice = currentVoice.name.contains("Petra", ignoreCase = true)
+                        
+                        val voiceParam = if (isRomanianVoice) {
+                            "petra"
+                        } else {
+                            currentVoice.name.lowercase().split(" ").firstOrNull()
+                        }
+                        
+                        val langParam = if (isRomanianVoice) "ro" else currentLocale.language
+
+                        Timber.d("SimpleSpeechProvider: voiceParam=$voiceParam, langParam=$langParam")
+                        apiClient.synthesizeSpeech(text, voiceParam, langParam)
                     }
                 } else {
                     apiClient.synthesizeSpeech(text)

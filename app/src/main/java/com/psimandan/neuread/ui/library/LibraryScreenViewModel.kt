@@ -7,11 +7,15 @@ import com.psimandan.neuread.data.model.EBookFile
 import com.psimandan.neuread.data.model.NeuReadBook
 import com.psimandan.neuread.data.repository.EBookRepository
 import com.psimandan.neuread.data.repository.LibraryRepository
+import com.psimandan.neuread.data.repository.PlayerStateRepository // ADDED
+import com.psimandan.neuread.domain.usecase.PlayerUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
@@ -19,7 +23,9 @@ import javax.inject.Inject
 @HiltViewModel
 class LibraryScreenViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
-    private val fileRepository: EBookRepository
+    private val fileRepository: EBookRepository,
+    private val playerUseCase: PlayerUseCase,
+    private val playerStateRepository: PlayerStateRepository // ADDED
 ) : ViewModel() {
 
     private val _libraryBooks = MutableStateFlow<List<NeuReadBook>>(emptyList())
@@ -32,7 +38,10 @@ class LibraryScreenViewModel @Inject constructor(
         val loading: Boolean = false,
         val showNewBookPicker: Boolean = false,
         val filterText: String = "",
-        val downloadProgress: Map<String, Float> = emptyMap()
+        val downloadProgress: Map<String, Float> = emptyMap(),
+        val playingBookId: String? = null,
+        val isPlaying: Boolean = false,
+        val realTimeProgressFormatted: String? = null
     )
 
     private val _viewState = MutableStateFlow(LibraryScreenUIState())
@@ -45,18 +54,34 @@ class LibraryScreenViewModel @Inject constructor(
             launch {
                 libraryRepository.getLibraryBooks().collect { books ->
                     _libraryBooks.value = books
-
-                    // Track downloads for these books
                     updateDownloadTracking(books, workManager)
                 }
             }
+
+            // Track the currently active book from the player's perspective
+            launch {
+                playerStateRepository.getCurrentBook().collect { activeBook ->
+                    _viewState.update { it.copy(playingBookId = activeBook?.id) }
+                }
+            }
+
+            // Track real-time playback state (play/pause and formatted time)
+            launch {
+                playerUseCase.getPlaybackState().collect { state ->
+                    _viewState.update { it.copy(
+                        isPlaying = state.isPlaying,
+                        realTimeProgressFormatted = state.formattedProgressTime
+                    ) }
+                }
+            }
+
             _selectedBook.emit(libraryRepository.getSelectedBook())
         }
     }
 
     private fun updateDownloadTracking(books: List<NeuReadBook>, workManager: androidx.work.WorkManager) {
         val currentBookIds = books.map { it.id }.toSet()
-        
+
         // Stop tracking books that are no longer in the library
         val jobsToRemove = downloadTrackingJobs.keys.filter { it !in currentBookIds }
         jobsToRemove.forEach { id ->
@@ -75,12 +100,12 @@ class LibraryScreenViewModel @Inject constructor(
                 downloadTrackingJobs[book.id] = viewModelScope.launch {
                     Timber.d("Starting download tracking for book: ${book.id}")
                     workManager.getWorkInfosByTagFlow("download_${book.id}").collect { workInfos ->
-                        val runningWork = workInfos.firstOrNull { 
-                            it.state == androidx.work.WorkInfo.State.RUNNING || 
-                            it.state == androidx.work.WorkInfo.State.ENQUEUED 
+                        val runningWork = workInfos.firstOrNull {
+                            it.state == androidx.work.WorkInfo.State.RUNNING ||
+                                    it.state == androidx.work.WorkInfo.State.ENQUEUED
                         }
                         val progress = runningWork?.progress?.getFloat("progress", 0f)
-                        
+
                         _viewState.value = _viewState.value.copy(
                             downloadProgress = _viewState.value.downloadProgress.toMutableMap().apply {
                                 if (runningWork != null && runningWork.state == androidx.work.WorkInfo.State.RUNNING) {
@@ -102,6 +127,7 @@ class LibraryScreenViewModel @Inject constructor(
         viewModelScope.launch {
             libraryRepository.selectBook(book.id)
             _selectedBook.emit(libraryRepository.getSelectedBook())
+            _viewState.update { it.copy(playingBookId = book.id) }
         }
     }
 
@@ -130,8 +156,6 @@ class LibraryScreenViewModel @Inject constructor(
             onLoaded(fileRepository.getEBookFileFromUri(uri))
             _viewState.emit(_viewState.value.copy(loading = false))
         }
-
-
     }
 
     fun loadEBookFromClipboard(onLoaded:(EBookFile?)-> Unit) {

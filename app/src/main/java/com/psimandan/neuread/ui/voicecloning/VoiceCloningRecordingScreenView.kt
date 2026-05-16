@@ -45,6 +45,16 @@ fun VoiceCloningRecordingScreenView(
     var selectedLanguage by remember { mutableStateOf("en_US") }
     var expanded by remember { mutableStateOf(false) }
 
+    val allowedLanguageTags = listOf("en-US", "es-ES", "fr-FR", "de-DE", "ro-RO")
+    val filteredLocales = remember(availableLocales) {
+        availableLocales.filter { locale ->
+            allowedLanguageTags.any { tag ->
+                val allowedLocale = java.util.Locale.forLanguageTag(tag)
+                locale.language == allowedLocale.language
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.resetRecording()
         voiceSelectorViewModel.loadVoices()
@@ -194,7 +204,7 @@ fun VoiceCloningRecordingScreenView(
 
                     Box {
                         OutlinedTextField(
-                            value = availableLocales.find { it.languageId() == selectedLanguage }?.displayName ?: selectedLanguage,
+                            value = filteredLocales.find { it.languageId() == selectedLanguage }?.displayName ?: selectedLanguage,
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Language") },
@@ -208,7 +218,7 @@ fun VoiceCloningRecordingScreenView(
                             onDismissRequest = { expanded = false },
                             modifier = Modifier.fillMaxWidth(0.8f)
                         ) {
-                            availableLocales.forEach { locale ->
+                            filteredLocales.forEach { locale ->
                                 DropdownMenuItem(
                                     text = { Text(locale.displayName) },
                                     onClick = {

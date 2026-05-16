@@ -231,7 +231,7 @@ fun LibraryScreenContent(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp, bottom = 0.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(filterBooks, key = { it.id }) { book ->
@@ -239,6 +239,12 @@ fun LibraryScreenContent(
                                 BookItemView(
                                     item = book,
                                     downloadProgress = uiState.downloadProgress[book.id],
+
+                                    // NEW: Pass real-time UI states
+                                    isCurrentlyPlaying = uiState.playingBookId == book.id,
+                                    isPlaying = uiState.isPlaying && uiState.playingBookId == book.id,
+                                    realTimeProgress = if (uiState.playingBookId == book.id) uiState.realTimeProgressFormatted else null,
+
                                     onSelect = {
                                         onEvent(LibraryScreenEvents.SelectBook(book))
                                     }
@@ -300,7 +306,7 @@ fun SearchBar(text: String, onTextChanged: (String) -> Unit) {
         label = { Text("Search") },
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
         shape = RoundedCornerShape(28.dp),
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
         trailingIcon = {

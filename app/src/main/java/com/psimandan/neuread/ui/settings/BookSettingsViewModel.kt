@@ -17,6 +17,7 @@ import com.psimandan.neuread.data.model.EBookFile
 import com.psimandan.neuread.data.model.NeuReadBook
 import com.psimandan.neuread.data.model.TextPart
 import com.psimandan.neuread.voice.NeuTTSApiClient
+import com.psimandan.neuread.voice.NeuReadVoice
 import com.psimandan.neuread.voice.SimpleSpeakingCallBack
 import com.psimandan.neuread.voice.SimpleSpeechProvider
 import com.psimandan.neuread.voice.languageId
@@ -28,6 +29,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.psimandan.neuread.audio.DownloadAudioWorker
+import com.psimandan.neuread.data.repository.PlayerStateRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -72,6 +74,7 @@ class LimitedDictionary(val limit: UInt) {
 class BookSettingsViewModel @Inject constructor(
     @ApplicationContext private val application: Context,
     private val repository: LibraryRepository,
+    private val playerStateRepository: PlayerStateRepository,
     private val prefsStore: PrefsStore
 ) : ViewModel() {
 
@@ -186,7 +189,7 @@ class BookSettingsViewModel @Inject constructor(
     fun downloadAudio() {
         val book = bookState.value.book as? Book ?: return
         val voiceName = bookState.value.voiceIdentifier
-        
+
         // Immediate UI feedback
         _viewState.update { it.copy(downloadProgress = 0f) }
         
@@ -242,7 +245,7 @@ class BookSettingsViewModel @Inject constructor(
                         
                         if (latestWork != null) {
                             if (latestWork.state == WorkInfo.State.SUCCEEDED) {
-                                if (bookState.value.book is Book && _viewState.value.downloadProgress != null) {
+                                if ((bookState.value.book is Book || bookState.value.book is AudioBook) && _viewState.value.downloadProgress != null) {
                                     Timber.d("trackActiveDownload=> download succeeded, refreshing")
                                     _viewState.update { it.copy(downloadProgress = null) }
                                     setUpBook()
@@ -255,6 +258,8 @@ class BookSettingsViewModel @Inject constructor(
                             } else if (latestWork.state == WorkInfo.State.CANCELLED) {
                                 _viewState.update { it.copy(downloadProgress = null) }
                             }
+                        } else {
+                            _viewState.update { it.copy(downloadProgress = null) }
                         }
                     }
                 }
@@ -280,7 +285,7 @@ class BookSettingsViewModel @Inject constructor(
                         language = audioBook.language,
                         voiceIdentifier = "en",
                         voiceRate = audioBook.voiceRate,
-                        text = audioBook.parts.map { it.text },
+                        text = audioBook.originalText.ifEmpty { audioBook.parts.map { it.text } },
                         lastPosition = audioBook.lastPosition,
                         updated = System.currentTimeMillis(),
                         bookmarks = audioBook.bookmarks,
@@ -288,6 +293,12 @@ class BookSettingsViewModel @Inject constructor(
                     )
                     
                     repository.updateBook(book)
+                    
+                    // Update global player state if this book is currently active
+                    val currentBook = playerStateRepository.getCurrentBook().first()
+                    if (currentBook?.id == book.id) {
+                        playerStateRepository.setCurrentBook(book)
+                    }
                     
                     withContext(Dispatchers.Main) {
                         _state.value = _state.value.copy(
@@ -316,13 +327,13 @@ class BookSettingsViewModel @Inject constructor(
                 Timber.d("setUpBook=>newBook skipping")
                 return@launch
             }
-            _viewState.update { it.copy(loading = true) }
+            _viewState.update { it.copy(loading = true, downloadProgress = null) }
 
             val book = withContext(Dispatchers.IO) {
                 repository.getSelectedBook()
             }
             Timber.d("setUpBook=>loaded book: ${book?.id}")
-            
+
             val recentSelections = try {
                 withContext(Dispatchers.IO) {
                     prefsStore.selectedLanguages().first()
@@ -336,6 +347,14 @@ class BookSettingsViewModel @Inject constructor(
             }
             Timber.d("setUpBook=>voiceRate: ${book?.voiceRate}")
 
+            val currentSpeechRate = try {
+                withContext(Dispatchers.IO) {
+                    playerStateRepository.getSpeechRate().first()
+                }
+            } catch (e: Exception) {
+                null
+            }
+
             if (book is Book) {
                 _state.value = _state.value.copy(
                     book = book,
@@ -343,7 +362,7 @@ class BookSettingsViewModel @Inject constructor(
                     author = book.author,
                     language = book.language,
                     voiceIdentifier = book.voiceIdentifier,
-                    voiceRate = book.voiceRate,
+                    voiceRate = currentSpeechRate ?: book.voiceRate,
                     text = book.text,
                     audioPath = "",
                     parts = emptyList(),
@@ -357,14 +376,15 @@ class BookSettingsViewModel @Inject constructor(
                     title = book.title,
                     author = book.author,
                     language = book.language,
-                    voiceIdentifier = "",
-                    voiceRate = book.voiceRate,
+                    voiceIdentifier = book.voice, // Map voice back to identifier
+                    voiceRate = currentSpeechRate ?: book.voiceRate,
                     text = emptyList(),
                     audioPath = book.audioFilePath,
                     parts = book.parts,
                     voice = book.voice,
                     model = book.model
                 )
+                trackActiveDownload(book.id) // Track if it's still being downloaded as a partial
             }
             _viewState.update { it.copy(loading = false) }
             Timber.d("setUpBook=>done")
@@ -428,7 +448,8 @@ class BookSettingsViewModel @Inject constructor(
                     bookSource = ebook.bookSource,
                     updated = System.currentTimeMillis(),
                     bookmarks = mutableListOf(),
-                    chapters = chapters
+                    chapters = chapters,
+                    originalText = ebook.content
                 )
             } else {
                 Book(
@@ -483,8 +504,23 @@ class BookSettingsViewModel @Inject constructor(
             language = language ?: _state.value.language,
             voiceIdentifier = voiceIdentifier ?: _state.value.voiceIdentifier
         )
+        voiceRate?.let {
+            playerStateRepository.updateSpeechRate(it)
+        }
         language?.let {
             recentSelectionsL.push(it)
+        }
+    }
+
+    fun validateSelectedVoice(availableVoices: List<NeuReadVoice>) {
+        val currentVoiceId = _state.value.voiceIdentifier
+        val currentLang = _state.value.language
+        val stillExists = availableVoices.any { it.name == currentVoiceId && it.language == currentLang }
+        if (!stillExists) {
+            val fallback = availableVoices.firstOrNull { it.language == currentLang } ?: availableVoices.firstOrNull()
+            fallback?.let {
+                updateBookDetails(voiceIdentifier = it.name)
+            }
         }
     }
 

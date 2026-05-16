@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.psimandan.neuread.voice.NeuReadVoice
 import com.psimandan.neuread.voice.VoiceSelectorViewModel
 import com.psimandan.neuread.voice.languageId
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +64,16 @@ fun VoiceCloningScreenView(
         var selectedLanguage by remember { mutableStateOf(voiceToEdit?.language ?: "en_US") }
         var expanded by remember { mutableStateOf(false) }
 
+        val allowedLanguageTags = listOf("en-US", "es-ES", "fr-FR", "de-DE", "ro-RO")
+        val filteredLocales = remember(availableLocales) {
+            availableLocales.filter { locale ->
+                allowedLanguageTags.any { tag ->
+                    val allowedLocale = Locale.forLanguageTag(tag)
+                    locale.language == allowedLocale.language
+                }
+            }
+        }
+
         AlertDialog(
             onDismissRequest = { voiceToEdit = null },
             title = { Text("Edit Voice") },
@@ -77,7 +88,7 @@ fun VoiceCloningScreenView(
 
                     Box {
                         OutlinedTextField(
-                            value = selectedLanguage,
+                            value = filteredLocales.find { it.languageId() == selectedLanguage }?.displayName ?: selectedLanguage,
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Language") },
@@ -91,7 +102,7 @@ fun VoiceCloningScreenView(
                             onDismissRequest = { expanded = false },
                             modifier = Modifier.fillMaxWidth(0.8f)
                         ) {
-                            availableLocales.forEach { locale ->
+                            filteredLocales.forEach { locale ->
                                 DropdownMenuItem(
                                     text = { Text(locale.displayName) },
                                     onClick = {

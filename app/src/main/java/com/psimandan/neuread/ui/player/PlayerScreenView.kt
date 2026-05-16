@@ -607,7 +607,7 @@ fun PlayerScreenContent(
             }
         }
 
-        if ((uiState.isLoading || uiState.totalTimeString.isEmpty() || uiState.totalTimeString.endsWith("00:00")) && !uiState.isSpeaking) {
+        if (uiState.isLoading && !uiState.isSpeaking && selectedBook != null) {
             Box(
                 Modifier
                     .fillMaxSize()

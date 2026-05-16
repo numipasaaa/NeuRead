@@ -29,16 +29,22 @@ class NeuTTSApiClient(private val context: Context) {
         .retryOnConnectionFailure(true)
         .build()
 
-    suspend fun synthesizeSpeech(text: String, voice: String? = null): File? = synthesizeBatch(listOf(text), voice)?.file
+    suspend fun synthesizeSpeech(text: String, voice: String? = null, language: String? = null, model: String? = null): File? = 
+        synthesizeBatch(listOf(text), voice, language, model)?.file
 
-    suspend fun synthesizeBatch(sentences: List<String>, voice: String? = null): SynthesisResult? = withContext(Dispatchers.IO) {
+    suspend fun synthesizeBatch(
+        sentences: List<String>, 
+        voice: String? = null,
+        language: String? = null,
+        model: String? = null
+    ): SynthesisResult? = withContext(Dispatchers.IO) {
         try {
             val json = JSONObject().apply {
                 put("sentences", JSONArray(sentences))
                 put("pause_seconds", 0.3)
-                if (voice != null) {
-                    put("voice", voice)
-                }
+                voice?.let { put("voice", it) }
+                language?.let { put("language", it) }
+                model?.let { put("model", it) }
             }
 
             val requestBody = json.toString().toRequestBody("application/json".toMediaType())

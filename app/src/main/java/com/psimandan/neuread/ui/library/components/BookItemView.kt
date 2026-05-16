@@ -2,10 +2,14 @@ package com.psimandan.neuread.ui.library.components
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,9 +26,18 @@ import com.psimandan.neuread.voice.toLocale
 
 
 @Composable
-fun BookItemView(item: NeuReadBook, downloadProgress: Float?, onSelect: () -> Unit) {
+fun BookItemView(
+    item: NeuReadBook,
+    downloadProgress: Float?,
+    isCurrentlyPlaying: Boolean = false, // ADDED
+    isPlaying: Boolean = false, // ADDED
+    realTimeProgress: String? = null, // ADDED
+    onSelect: () -> Unit
+) {
     val uiState by item.viewState.collectAsState()
-    val scale by animateFloatAsState(targetValue = 1f, label = "scale")
+
+    // Animate scale up slightly when it's the currently playing book
+    val scale by animateFloatAsState(targetValue = if (isCurrentlyPlaying) 1.02f else 1f, label = "scale")
 
     LaunchedEffect(item.id) {
         item.lazyCalculate { }
@@ -37,15 +50,41 @@ fun BookItemView(item: NeuReadBook, downloadProgress: Float?, onSelect: () -> Un
             .clickable { onSelect() },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            // Highlight the background if active
+            containerColor = if (isCurrentlyPlaying) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        // Add a colored border if active
+        border = if (isCurrentlyPlaying) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)) else null,
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isCurrentlyPlaying) 8.dp else 0.dp)
     ) {
         Column(
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {
+            // NEW: "Currently Playing" / "Last Played" Badge
+            if (isCurrentlyPlaying) {
+                Row(
+                    modifier = Modifier.padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Filled.VolumeUp else Icons.Filled.PlayArrow,
+                        contentDescription = "Playing Status",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (isPlaying) "Currently Listening" else "Last Played",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -55,14 +94,14 @@ fun BookItemView(item: NeuReadBook, downloadProgress: Float?, onSelect: () -> Un
                     Text(
                         text = item.title,
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = if (isCurrentlyPlaying) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = item.author,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (isCurrentlyPlaying) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -105,23 +144,27 @@ fun BookItemView(item: NeuReadBook, downloadProgress: Float?, onSelect: () -> Un
                         color = MaterialTheme.colorScheme.secondary
                     )
                 } else {
+                    // Use realTimeProgress if this is the active book, otherwise fallback to saved progress
+                    val activeProgress = if (isCurrentlyPlaying && realTimeProgress != null) realTimeProgress else uiState.progressTime
+
                     val progressText = if (uiState.isCompleted) {
                         "Completed"
                     } else {
-                        "${uiState.progressTime} / ${uiState.totalTime}"
+                        "$activeProgress / ${uiState.totalTime}"
                     }
-                    
+
                     Surface(
-                        color = if (uiState.isCompleted) MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f) 
-                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        color = if (uiState.isCompleted) MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)
+                        else if (isCurrentlyPlaying) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
                             text = progressText,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.labelMedium,
-                            color = if (uiState.isCompleted) MaterialTheme.colorScheme.secondary 
-                                    else MaterialTheme.colorScheme.primary,
+                            color = if (uiState.isCompleted) MaterialTheme.colorScheme.secondary
+                            else MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold
                         )
                     }

@@ -61,4 +61,8 @@ class PlayerUseCaseImpl @Inject constructor(
     override fun getCurrentTimeElapsed(): Long {
         return bookPlayer?.currentTimeElapsed() ?: 0
     }
+
+    override fun isLoading(): Boolean {
+        return bookPlayer?.isLoading() ?: false
+    }
 }
