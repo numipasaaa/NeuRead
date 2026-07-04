@@ -1,4 +1,4 @@
-# NeuRead Android - Descrierea Livrabilelor Proiectului
+# NeuRead - Descrierea Livrabilelor Proiectului
 
 **Autor:** Șimandan Petra-Ariana  
 **Aplicație:** NeuRead - Aplicație Mobilă de Lectură Audio Bazată pe Modele Neurale
