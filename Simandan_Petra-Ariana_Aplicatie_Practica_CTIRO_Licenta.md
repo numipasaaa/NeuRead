@@ -222,7 +222,7 @@ Settings → Apps → NeuRead → Uninstall
 
 **Autor:** Șimandan Petra-Ariana
 
-- Email: [contact email dacă este disponibil]
+- Email: petra-ariana.simandan@student.upt.ro
 - Repository Issues: https://github.com/numipasaaa/NeuRead/issues
 - Discussion: https://github.com/numipasaaa/NeuRead/discussions
 
