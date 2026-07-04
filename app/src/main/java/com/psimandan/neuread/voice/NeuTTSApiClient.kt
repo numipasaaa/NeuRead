@@ -4,6 +4,7 @@ import android.content.Context
 import timber.log.Timber
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -17,8 +18,8 @@ import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
 
 class NeuTTSApiClient(private val context: Context) {
-    // Replace with your computer's local IP address (e.g., 192.168.1.100)
-    private val baseUrl = "http://192.168.1.131:8000"
+    // Replace with your computer's local IP address
+    private val baseUrl = "http://10.46.183.205:8000"
 
     data class SynthesisResult(val file: File, val durationsMs: List<Int>)
 
@@ -41,7 +42,7 @@ class NeuTTSApiClient(private val context: Context) {
         try {
             val json = JSONObject().apply {
                 put("sentences", JSONArray(sentences))
-                put("pause_seconds", 0.3)
+                put("pause_seconds", 0.15)
                 voice?.let { put("voice", it) }
                 language?.let { put("language", it) }
                 model?.let { put("model", it) }
@@ -74,8 +75,12 @@ class NeuTTSApiClient(private val context: Context) {
         return@withContext null
     }
 
-    suspend fun encodeReference(audioFile: File): List<Int>? = withContext(Dispatchers.IO) {
+    suspend fun encodeReference(audioFile: File, language: String? = null): List<Int>? = withContext(Dispatchers.IO) {
         try {
+            val urlBuilder = (baseUrl + "/encode_reference").toHttpUrlOrNull()?.newBuilder()
+            language?.let { urlBuilder?.addQueryParameter("language", it) }
+            val httpUrl = urlBuilder?.build()
+
             val requestBody = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart(
@@ -85,10 +90,17 @@ class NeuTTSApiClient(private val context: Context) {
                 )
                 .build()
 
-            val request = Request.Builder()
-                .url("$baseUrl/encode_reference")
-                .post(requestBody)
-                .build()
+            val request = if (httpUrl != null) {
+                Request.Builder()
+                    .url(httpUrl)
+                    .post(requestBody)
+                    .build()
+            } else {
+                Request.Builder()
+                    .url("$baseUrl/encode_reference")
+                    .post(requestBody)
+                    .build()
+            }
 
             val response = client.newCall(request).execute()
             if (response.isSuccessful && response.body != null) {
@@ -122,13 +134,15 @@ class NeuTTSApiClient(private val context: Context) {
     suspend fun cloneWithCodes(
         text: String,
         refText: String,
-        refCodes: List<Int>
-    ): File? = cloneBatch(listOf(text), refText, refCodes)?.file
+        refCodes: List<Int>,
+        language: String? = null
+    ): File? = cloneBatch(listOf(text), refText, refCodes, language)?.file
 
     suspend fun cloneBatch(
         sentences: List<String>,
         refText: String,
-        refCodes: List<Int>
+        refCodes: List<Int>,
+        language: String? = null
     ): SynthesisResult? = withContext(Dispatchers.IO) {
         try {
             val json = JSONObject()
@@ -140,7 +154,8 @@ class NeuTTSApiClient(private val context: Context) {
             refCodes.forEach { codesArray.put(it) }
             json.put("ref_codes", codesArray)
             
-            json.put("pause_seconds", 0.3)
+            json.put("pause_seconds", 0.15)
+            language?.let { json.put("language", it) }
 
             val requestBody = json.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder()

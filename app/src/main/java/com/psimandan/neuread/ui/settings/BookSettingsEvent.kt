@@ -25,6 +25,9 @@ sealed class BookSettingsEvent {
     data class ToggleDyslexicFont(val enabled: Boolean) : BookSettingsEvent()
     data class ToggleHighlighting(val enabled: Boolean) : BookSettingsEvent()
     data class DeleteVoice(val voice: NeuReadVoice) : BookSettingsEvent()
+    data object OpenTextEditor : BookSettingsEvent()
+    data class SaveEditedText(val text: String) : BookSettingsEvent()
+    data object CloseTextEditor : BookSettingsEvent()
 }
 
 fun BookSettingsEvent.onEvent(model: BookSettingsViewModel, onNavigateBack: (NeuReadBook?) -> Unit) {
@@ -52,10 +55,10 @@ fun BookSettingsEvent.onEvent(model: BookSettingsViewModel, onNavigateBack: (Neu
         is BookSettingsEvent.SpeedSelected -> model.updateBookDetails(voiceRate = this.speed)
         is BookSettingsEvent.PageSelected -> model.onPageSelected(this.page)
         is BookSettingsEvent.PlayVoiceSample -> {
-                model.payTextSample(this.language, this.voice, this.rate)
+                model.playTextSample(this.language, this.voice, this.rate)
         }
         is BookSettingsEvent.PlayAudioSample -> {
-             model.payAudioSample()
+             model.playAudioSample()
         }
         is BookSettingsEvent.DismissVoiceErrorDialog -> model.dismissVoiceError()
         BookSettingsEvent.DownloadAudio -> model.downloadAudio()
@@ -64,8 +67,10 @@ fun BookSettingsEvent.onEvent(model: BookSettingsViewModel, onNavigateBack: (Neu
         is BookSettingsEvent.ToggleDyslexicFont -> model.toggleDyslexicFont(this.enabled)
         is BookSettingsEvent.ToggleHighlighting -> model.toggleHighlighting(this.enabled)
         is BookSettingsEvent.DeleteVoice -> {
-            // Handled via VoiceSelectorViewModel in the view for now, 
-            // but we could also move it to BookSettingsViewModel if needed.
+            // Handled via VoiceSelectorViewModel in the view for now.
         }
+        BookSettingsEvent.OpenTextEditor -> model.onOpenTextEditor()
+        is BookSettingsEvent.SaveEditedText -> model.onSaveEditedText(this.text)
+        BookSettingsEvent.CloseTextEditor -> model.onCloseTextEditor()
     }
 }

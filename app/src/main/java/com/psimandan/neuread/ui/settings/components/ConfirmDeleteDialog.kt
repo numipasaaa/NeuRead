@@ -10,7 +10,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -23,16 +22,33 @@ import java.util.*
 
 @Preview(showBackground = true)
 @Composable
+fun ConfirmDeleteDialogLightThemePreview() {
+    NeuReadTheme(darkTheme = false) {
+        ConfirmDeleteDialog(
+            onDeleteClicked = {},
+            onDismissRequest = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
 fun ConfirmDeleteDialogDarkThemePreview() {
     NeuReadTheme(darkTheme = true) {
-        val test = Locale.getDefault()
         ConfirmDeleteDialog(
-            onDeleteClicked = {
+            onDeleteClicked = {},
+            onDismissRequest = {}
+        )
+    }
+}
 
-            },
-            onDismissRequest = {
-
-            }
+@Preview(showBackground = true)
+@Composable
+fun DeleteDialogLightThemePreview() {
+    NeuReadTheme(darkTheme = false) {
+        DeleteDialog(
+            onDeleteClicked = {},
+            onDismissRequest = {}
         )
     }
 }
@@ -42,12 +58,19 @@ fun ConfirmDeleteDialogDarkThemePreview() {
 fun DeleteDialogDarkThemePreview() {
     NeuReadTheme(darkTheme = true) {
         DeleteDialog(
-            onDeleteClicked = {
+            onDeleteClicked = {},
+            onDismissRequest = {}
+        )
+    }
+}
 
-            },
-            onDismissRequest = {
-
-            }
+@Preview(showBackground = true)
+@Composable
+fun ErrorMessageDialogLightThemePreview() {
+    NeuReadTheme(darkTheme = false) {
+        ErrorMessageDialog(
+            message = "Something went wrong. Please check your internet connection and try again.",
+            onDismissRequest = {}
         )
     }
 }
@@ -57,10 +80,8 @@ fun DeleteDialogDarkThemePreview() {
 fun ErrorMessageDialogDarkThemePreview() {
     NeuReadTheme(darkTheme = true) {
         ErrorMessageDialog(
-            message = "Something went wrong. Please check your internet connection and try again. Go to Settings and check if Text-to-Speech and voices are available on your phone.",
-            onDismissRequest = {
-
-            }
+            message = "Something went wrong. Please check your internet connection and try again.",
+            onDismissRequest = {}
         )
     }
 }
@@ -70,6 +91,7 @@ fun ConfirmDeleteDialog(
     onDeleteClicked: () -> Unit,
     onDismissRequest: () -> Unit
 ) {
+    val colorScheme = MaterialTheme.colorScheme
     AlertDialog(
         onDismissRequest = onDismissRequest,
         confirmButton = { },
@@ -87,7 +109,7 @@ fun ConfirmDeleteDialog(
                         fontSize = 22.sp,
                         lineHeight = 28.sp,
                         fontWeight = FontWeight.W400,
-                        color = Color.White
+                        color = colorScheme.onSurface
                     ),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
@@ -100,7 +122,7 @@ fun ConfirmDeleteDialog(
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontSize = 14.sp,
                         fontWeight = FontWeight.W300,
-                        color = Color.White.copy(alpha = 0.6f)
+                        color = colorScheme.onSurface.copy(alpha = 0.6f)
                     ),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
@@ -116,8 +138,8 @@ fun ConfirmDeleteDialog(
                     shape = RoundedCornerShape(percent = 50),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFF3BDB7),
-                        contentColor = Color.Black
+                        containerColor = colorScheme.errorContainer,
+                        contentColor = colorScheme.onErrorContainer
                     )
                 ) {
                     Text(
@@ -139,8 +161,8 @@ fun ConfirmDeleteDialog(
                     shape = RoundedCornerShape(percent = 50),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF2A2A2A),
-                        contentColor = Color.White.copy(alpha = 0.5f)
+                        containerColor = colorScheme.surfaceVariant,
+                        contentColor = colorScheme.onSurfaceVariant
                     )
                 ) {
                     Text(
@@ -153,7 +175,7 @@ fun ConfirmDeleteDialog(
                 }
             }
         },
-        containerColor = Color(0xFF1D2328),
+        containerColor = colorScheme.surface,
         shape = RoundedCornerShape(32.dp)
     )
 }

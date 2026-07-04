@@ -1,0 +1,51 @@
+sample_index,text,mcd,speaker_similarity,ref_dur_sec,gen_dur_sec
+0,"Am asistat la executarea lui Porcari, spuse Nicolo de Cusa, făcându-și vânt cu Batista.",9.24065232105028,0.5904033184051514,5.71,11.68
+1,"Celelalte fapte ale lui Abia, căile lui și cuvintele lui sunt scrise în relatarea profetului Ido.",10.39317954746368,0.4758865237236023,8.03,17.34
+2,"Trebuie să fi fost amestecat în ea, să fi fost compromis sau să-și fi făcut un renume, să fi pus mân",8.773235974510225,0.6379908919334412,9.31,19.56
+3,"În ajunul unei bătălii, ostașul trebuie să-și păstreze capul limpede și nervii domoliți.",8.385264997066587,0.47662848234176636,5.43,6.76
+4,"De câte ori nu căzuse năpasta asupra ei, și numai din pricina unui cuvânt.",9.792395381938476,0.3913472890853882,5.51,10.36
+5,"Atât pelerinii, cât și paznicii, erau istoviți după drumul lung prin pustiul ars de soare.",12.771245695846334,0.5250780582427979,6.45,17.56
+6,"Vor zăcea în lanțuri pe paie, în răceala umedă și pestilențială a celulelor subterane.",9.159195939478439,0.4098029136657715,6.47,7.58
+7,"În al doilea rând, de unde voia să știe artileriștii noștri că nu au de-a face cu o navă pirat?",8.066061559381945,0.4729713797569275,5.69,12.6
+8,Un mănunchi de prelocuri care îi ieșau din buzunarul mic te făceau să crezi că are și un ceas.,9.70312363366447,0.5019698143005371,5.59,7.02
+9,"Te fac să vezi pământul făgăduinței și iau, ca să zic așa, însuși chipul franței.",8.96130979188189,0.45829272270202637,6.05,6.24
+10,"În afara barierei se îmbulzeau dezordonat corturile solicitanților, de tot felul, ale negusătorilor ",9.604534720518757,0.5091039538383484,14.65,9.1
+11,"Pe teritoriul seminției lui Zabulon le-au dat Iocneam, cu pășunile din jur, Karta, cu pășunile din j",7.835095325465042,0.6021228432655334,13.97,10.5
+12,Tăvălugul de întuneric al nopții se rostogoli spre inima Europei și spre apele oceanului fără de sfâ,9.319877398877068,0.550482988357544,8.25,14.86
+13,"Ei ziceau Zeul nostru l-a dat în mâinile noastre pe Samson, dușmanul nostru.",11.133534085807007,0.5832253098487854,5.8900625,12.4
+14,"""- Ți-a spus, cred, părintele econom, că vreau să te trimit cu o scrisoare."" ""- Mi-a spus preacuvioa",9.646286006006271,0.4508816599845886,11.49,16.58
+15,"Nu, fiii mei, nu este bine ceea ce aud zicându-se despre voi în poporul Domnului.",9.640259565028353,0.5720829367637634,5.95,16.54
+16,"Animalele nu sunt altceva decât imaginile virtuțiilor și viciilor noastre, perindându-se pe dinainte",10.081954441320134,0.3711119294166565,11.69,15.02
+17,"La porunca sa, istoricul palatului, doctorul Xefilin, îi alcătuise o listă cuprinzând chipul în care",10.006916929060884,0.5326868295669556,13.03,15.16
+18,"Iotam a adormit alături de strămoșii săi și l-au înmormântat în cetatea lui David și, în locul lui, ",10.964622348736441,0.6421666145324707,10.43,16.4
+19,"După ce Îngerul Domnului le-a zis aceste cuvinte tuturor fiilor lui Israel, poporul și-a ridicat gla",9.06730006427785,0.5096246004104614,8.0500625,6.38
+20,"Sub ochii camarazilor săi, Hasan se prăbuși, rostogolindu-se pe taluzul de pământ.",10.04996781501487,0.5235759019851685,5.65,14.44
+21,"Maon, Carmel, Zif, Iuta, Izrael, Iocdeam, Zanoah, Cain.",9.578261051874744,0.5561132431030273,8.63,11.44
+22,"Generalii, vizirii, înalții demnitari ai curții, care se prezentau ca de obicei spre a fi primiți în",9.770291052340305,0.5501999258995056,10.25,13.14
+23,"Se bărbierea în fiecare zi, îl rădea un bărbier care fusese în balamuc și care nu-l putea suferi, fi",10.883805645883001,0.3677021861076355,10.37,15.2
+24,"Făcând un haz nespus, ascultau cântecele grosolane în care Napoleon era numit Nicolae.",9.919916010281602,0.4295785427093506,6.37,6.22
+25,"Nu văzuse în viața lui un trup femeiesc zvelt, fiindcă nici marele eonuc negru și nici superintenden",9.137761327351667,0.5079435110092163,11.77,12.08
+26,Îndepărtează pe fiecare dintre regi de la locul lor și pune guvernatori în locul acestora.,10.138790999115818,0.5363633036613464,5.77,14.82
+27,"Familia sa fiind ruinată de revoluție, sora lui primea o rentă viageră de 500 de franci, care la pre",8.642335515297374,0.5903844833374023,11.31,16.88
+28,"Fără îndoială, un înger uriaș sta undeva nevăzut, în picioare, cu aripile desfăcute în așteptarea su",11.932732147240973,0.023296723142266273,8.45,23.06
+29,Aspasia a fost zămislită pentru împrejurarea în care lui Prometeu i-ar fi trebuit o târfă.,9.983154933631546,0.23060792684555054,5.77,14.28
+30,"Îl dezinformase oare Iacub Pașa, furnizându-i cifre inexacte asupra efectiv lor armate bizantine?",10.52631179912109,0.5251203179359436,5.51,19.58
+31,"Astfel, ei se vor teme de tine în toate zilele cât vor trăi în țara pe care le-ai dat-o strămoșilor ",10.69777727525463,0.44993340969085693,7.05,10.14
+32,"Are însă de ales fie predarea orașului evacuat de toți romeii, fie moartea prin sabie.",8.457773675005006,0.4499129056930542,6.41,17.52
+33,"Plăteam impozitivă, eram alegător, sunt un cetățean cum poate dumneata nu ești.",7.989475475217481,0.36881622672080994,5.77,7.7
+34,"Când casa lui Iosif a cercetat Betelul, numele cetății era cândva Luz, spionii au văzut un om ieșind",9.810369432919119,0.6346692442893982,13.37,13.4
+35,"Conștiința sa, călită în toate asalturile posibile ale nenorocirilor, putea să pară pentru tot deaun",9.368573753488157,0.5333493947982788,8.01,6.5
+36,"Jean de Nevers ascultase discuția aprinsă, cumpănind, pro și contra, argumentele aruncate în balanță",11.948152012048618,0.2638443112373352,8.81,19.18
+37,"Voltijorii, răspunzând de jos, șase contra două sute, curajoși, neavând alta dăpost decât tufele de ",8.892475950901174,0.27424633502960205,12.09,7.68
+38,"Orbit de sângele care-i se scurgea în ochi, sfâșiat de dureri, căută cu privirea prin perdeaua roșie",9.08100492734062,0.5671103000640869,11.99,19.3
+39,"Acum se încrugeșea cu mulți călători călări pe cai, pe asini, ori pe cocoașele cămilelor.",8.825479614491291,0.4913543462753296,5.95,7.2
+40,"El nu a renunțat la păcatele lui Eroboam, care l-a făcut pe Israel să păcătuiască.",11.077541679222678,0.16061577200889587,5.6900625,12.12
+41,"La intrarea în sanctuarul interior, a făcut uși din lemn de măslin cu tocurile ușilor în cinci muchi",10.020457924819285,0.34432730078697205,7.63,10.48
+42,"La Kosovo, de pildă, principele sârb Marco Kraljević și ostașii lui luptaseră alături de musulmani.",9.964073479949265,0.46259552240371704,6.91,24.1
+43,"Dacă va ordona acum împresurarea Constantinopolelui, nu s-ar expune oare pericolului de a provoca ac",10.481769272531041,0.5642315745353699,7.51,21.98
+44,"Vei avea propriul tău cort, caleașca proprie și propria ta gardă, comandată de emirul Berlas, care ț",10.345406802882904,0.5165971517562866,12.41,19.18
+45,"Pe platforma turnului din flancul stâng al porții Sfântului Roman, generalii Crisogeorgis și Rav Duh",10.102051438952941,0.4736558198928833,12.19,17.82
+46,Omul răspunse cu un rânjet dulceag despre care numai surâsul mânghietor al unui crocodil ar da o ide,11.285810526183996,0.23949715495109558,6.95,21.52
+47,"Apoi i-a trimis și ei au plecat, iar ea a legat frânghia stacojie de fereastră.",11.972092334006332,0.486564964056015,6.0700625,15.64
+48,"Oameni de rea credință, mărite doamne, au speculat anumite înclinări ale prințului, scuzabile desigu",8.852854364752327,0.5675224661827087,10.99,13.58
+49,Nu va mai simți căldura privirilor de recunoștință și de dragoste ațintindu-se asupra lui.,8.817933351290298,0.4360214173793793,6.17,7.78

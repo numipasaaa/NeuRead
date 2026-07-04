@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git
+.gitignore
+build/
+dist/
+venv/
+.env
+*.wav
+*.mp3
+data/*
+diagnostics_outliers/

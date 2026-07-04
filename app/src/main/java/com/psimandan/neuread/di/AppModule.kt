@@ -89,10 +89,9 @@ object AppModule {
     @Provides
     @Singleton
     fun providePlayerUseCase(
-        playerStateRepository: PlayerStateRepository,
-        libraryRepository: LibraryRepository
+        playerStateRepository: PlayerStateRepository
     ): PlayerUseCase {
-        return PlayerUseCaseImpl(playerStateRepository, libraryRepository)
+        return PlayerUseCaseImpl(playerStateRepository)
     }
 
     @Provides

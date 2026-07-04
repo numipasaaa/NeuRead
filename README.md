@@ -5,83 +5,84 @@
 [![Language](https://img.shields.io/badge/Language-Kotlin-blue.svg)](https://kotlinlang.org/)
 [![Version](https://img.shields.io/badge/Version-1.9-orange.svg)](https://play.google.com/store/apps/details?id=com.psimandan.neuread)
 
-Ultimate Text-to-Speech and Audiobook Player for Android - Listen to your books with high-quality AI voices!
+Cititor de e-book cu Text-to-Speech și Audiobook Player pentru Android - Ascultă cărțile tale cu voci AI de înaltă calitate!
 
 <img src="app/src/main/ic_launcher-playstore.png" width="100" height="100" alt="NeuRead Logo">
 
-## Overview
+## Prezentare generală
 
-NeuRead is an Android application that converts text to speech using state-of-the-art AI models. It allows you to listen to your books while running, exercising, or on the go. It supports various e-book formats and provides a clean, intuitive interface for managing your library and controlling playback with both local TTS and cloud-based AI voices.
+NeuRead este o aplicație Android care convertește textul în vorbire folosind un model AI de ultimă generație, NeuTTS Air. Suportă diverse formate de e-book și oferă o interfață curată și intuitivă pentru gestionarea bibliotecii și controlul redării cu atât TTS local cât și voci AI de pe server.
 
-## Features
+## Funcționalități
 
-- **Advanced AI Voices**: High-quality, natural-sounding voices (Mateo, Greta, Juliette, Jo, Dave)
-- **Voice Cloning**: Create your own digital voice by recording a short sample (supports English, Spanish, French, German, and Romanian)
-- **Text-to-Speech Playback**: Convert any text or e-book to speech
-- **Seamless Transitions**: Switch between local TTS and high-quality AI audio tracks instantly
-- **MP3 Audiobook Support**: Listen to high-quality audiobooks generated using the RANDR pipeline
-- **Bookmarks**: Save and jump to specific positions in your books
-- **Speed Control**: Adjust playback speed to your preference
-- **Library Management**: Organize your books in a clean, intuitive interface
-- **E-book Format Support**: Read EPUB, PDF, plain text files, and custom `.randr` archives
-- **Background Playback**: Continue listening even when the app is in the background
-- **Media Controls**: Control playback from your lock screen or notification
-- **Highlighting**: Follow along with highlighted text as it's being read
+- **Voci AI avansate**: Voci de înaltă calitate și naturale (Adrian, Andreea, Mihaela, Mihai, și alte modele personalizate)
+- **Clonare vocală**: Creează-ți propria voce digitală prin înregistrarea unui scurt eșantion (suportă limba engleză, spaniolă, franceză, germană și română)
+- **Redare text-to-speech**: Convertește orice text sau e-book în vorbire
+- **Tranzițiile fără întreruperi**: Comută instantaneu între TTS local și piste audio AI de înaltă calitate
+- **Suport audiobook**: Ascultă audiobook-uri de înaltă calitate generate folosind pipeline-ul NeuTTS
+- **Semne de carte**: Salvează și sari la poziții specifice în cărțile tale
+- **Control viteză**: Ajustează viteza de redare după preferință
+- **Gestionare bibliotecă**: Organizează cărțile în interfață curată și intuitivă
+- **Suport formate e-book**: Citește EPUB, PDF, fișiere text simplu și arhive personalizate
+- **Redare în background**: Continuă ascultarea chiar și când aplicația este în background
+- **Controale media**: Controlează redarea din ecranul blocat sau notificare
+- **Text evidențiat**: Urmărește textul evidențiat în timp ce este citit
+- **Font dislexic**: Folosește un font special gândit pentru persoanele cu dislexie
 
-**Download and use the app for free!**
+**Descarcă și folosește aplicația gratuit!**
 
-## Installation
+## Instalare
 
-### From Source
+### Din cod sursă
 
-1. Clone the repository:
+1. Clonează depozitul:
    ```
    git clone https://github.com/numipasaaa/NeuRead.git
    ```
 
-2. Open the project in Android Studio
+2. Deschide proiectul în Android Studio
 
-3. Build and run the app on your device or emulator
+3. Compilează și rulează aplicația pe dispozitivul tău sau emulator
 
 ---
 
-## Architecture
+## Arhitectură
 
-NeuRead follows the MVVM (Model-View-ViewModel) architecture pattern and is built with modern Android development tools and libraries.
+NeuRead urmează pattern-ul de arhitectură MVVM (Model-View-ViewModel) și este construit cu instrumentele și bibliotecile moderne de dezvoltare Android.
 
-### High-Level Architecture
+### Arhitectura de nivel înalt
 
 ```mermaid
 graph TB
-    subgraph "UI Layer"
+    subgraph "Strat UI"
         UI[Jetpack Compose UI]
         VM[ViewModels]
     end
 
-    subgraph "Domain Layer"
+    subgraph "Strat Domain"
         PUC[PlayerUseCase]
         BUC[BookmarkUseCase]
     end
 
-    subgraph "Player Layer"
-        BP[BookPlayer Interface]
+    subgraph "Strat Player"
+        BP[BookPlayer - Interfață]
         ABP[AudioBookPlayer]
         SBP[SpeechBookPlayer]
     end
 
-    subgraph "TTS Layer"
-        TTS[Text-to-Speech Engine]
-        AI[NeuTTS Cloud API]
+    subgraph "Strat TTS"
+        TTS[Motor Text-to-Speech]
+        AI[NeuTTS API Cloud]
     end
 
-    subgraph "Data Layer"
+    subgraph "Strat Date"
         PSR[PlayerStateRepository]
-        REPO[Other Repositories]
-        DS[Data Sources]
+        REPO[Alte Repository-uri]
+        DS[Surse de date]
     end
 
-    subgraph "Service Layer"
-        PS[Background Services]
+    subgraph "Strat Servicii"
+        PS[Servicii de background]
     end
 
     UI --> VM
@@ -103,115 +104,133 @@ graph TB
     REPO --> DS
 ```
 
-### Key Architectural Features
+### Caracteristici arhitecturale cheie
 
-- **Clean Architecture**: Separation of concerns with distinct layers
-- **MVVM Pattern**: Reactive UI with ViewModels managing state
-- **Hybrid Playback Engine**: Seamlessly switches between local TTS (`SpeechBookPlayer`) and AI Audio (`AudioBookPlayer`)
-- **Dependency Injection**: Hilt for clean dependency management
-- **Single Responsibility**: Each component has a focused purpose
-- **Testable Design**: Interfaces and dependency injection enable easy testing
-- **Modern Android**: Built with Jetpack Compose and latest Android APIs
+- **Arhitectură curată**: Separarea preocupărilor în straturi distincte
+- **Pattern MVVM**: UI reactiv cu ViewModel-uri care gestionează starea
+- **Motor de redare hibrid**: Comută fără probleme între TTS local (`SpeechBookPlayer`) și Audio AI (`AudioBookPlayer`)
+- **Injecție de dependențe**: Hilt pentru gestionare curată a dependențelor
+- **Responsabilitate unică**: Fiecare componentă are un scop bine definit
+- **Design testabil**: Interfețele și injecția de dependențe permit testarea ușoară
+- **Android modern**: Construit cu Jetpack Compose și cele mai recente API-uri Android
 
-For detailed architecture documentation with comprehensive diagrams, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Technologies Used
+## Tehnologii utilizate
 
-- **Kotlin**: Modern, concise programming language for Android
-- **Jetpack Compose**: Declarative UI toolkit for building native Android UI
-- **Coroutines & Flow**: For reactive asynchronous programming
-- **Hilt**: For dependency injection
-- **Media3 (ExoPlayer)**: For high-precision audio playback
-- **Android TTS & NeuTTS API**: For multi-engine speech conversion
-- **Jetpack Navigation**: For in-app navigation
-- **DataStore**: For preferences and cloned voice storage
+- **Kotlin**: Limbaj modern și concis pentru Android
+- **Jetpack Compose**: Toolkit declarativ pentru construirea UI-ului nativ Android
+- **Coroutines & Flow**: Pentru programare asincronă reactivă
+- **Hilt**: Pentru injecție de dependențe
+- **Media3 (ExoPlayer)**: Pentru redare audio de înaltă precizie
+- **Android TTS & NeuTTS API**: Pentru conversia vorbire pe mai multe motoare
+- **Jetpack Navigation**: Pentru navigare în-aplicație
+- **DataStore**: Pentru preferințe și stocare voci clonate
 
-## NeuTTS Server Setup
+## Configurarea serverului NeuTTS
 
-### Prerequisites
+### Cerințe preliminare
 
-- Python 3.10+
-- NVIDIA GPU with CUDA support (recommended for performance)
-- At least 8GB of VRAM
+- Python 3.13
+- GPU NVIDIA cu suport CUDA (recomandat pentru performanță)
+- Cel puțin 8GB VRAM
 
-### Running the Server
+### Rularea serverului
 
-1. **Install dependencies:**
+1. **Instalează dependențele:**
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **Start the FastAPI server:**
+2. **Pornește serverul FastAPI:**
    ```bash
    python server.py
    ```
 
+## Deployment cu Docker
 
-## Contributing
+NeuTTS poate fi ușor deploiat folosind Docker și Docker Compose. Proiectul include fișiere de configurare Docker optimizate pentru CPU și GPU.
 
-We welcome contributions from the community! Whether you're fixing bugs, adding features, or improving documentation, your help is appreciated.
+### Cerințe preliminare pentru Docker
 
-### Development Setup
+- Docker
+- Docker Compose
+- Pentru GPU: NVIDIA Docker runtime
 
-1. **Prerequisites**
-   - Android Studio Electric Eel or later
-   - JDK 11 or later
-   - Android SDK with API level 24+
+### Deployment CPU
 
-2. **Clone and Setup**
+1. **Construiește imaginea Docker:**
+   ```bash
+   docker build -f neutts-main/Dockerfile -t neutts-server:latest .
+   ```
+
+2. **Rulează containerul:**
+   ```bash
+   docker run --rm -p 8000:8000 \
+     -e BACKBONE_PATH=/app/data/neutts-romanian-finetune/checkpoint-370000 \
+     -v /host/path/to/models:/app/data:ro \
+     neutts-server:latest
+   ```
+
+3. **Sau folosește Docker Compose:**
+   ```bash
+   docker-compose up
+   ```
+
+### Deployment GPU (NVIDIA CUDA)
+
+1. **Construiește imaginea Docker optimizată pentru GPU:**
+   ```bash
+   docker build -f neutts-main/Dockerfile.gpu -t neutts-server:gpu .
+   ```
+
+2. **Rulează containerul cu GPU:**
+   ```bash
+   docker run --rm --gpus all -p 8000:8000 \
+     -e BACKBONE_DEVICE=cuda -e CODEC_DEVICE=cuda \
+     -e BACKBONE_PATH=/app/data/neutts-romanian-finetune/checkpoint-370000 \
+     -v /host/path/to/models:/app/data:ro \
+     neutts-server:gpu
+   ```
+
+3. **Sau folosește Docker Compose cu GPU:**
+   ```bash
+   docker-compose -f docker-compose.gpu.yml up
+   ```
+
+
+## Antrenare model
+
+Pentru a antrena modelul NeuTTS, consultă:
+
+- `neutts-main/TRAINING.md` - Ghid complet de antrenare
+- `neutts-main/examples/VOICE_CLONING_README.md` - Ghid tehnic pentru clonarea vocală
+
+
+### Configurarea mediului de dezvoltare
+
+1. **Cerințe preliminare**
+   - Android Studio Electric Eel sau mai nou
+   - JDK 11 sau mai nou
+   - Android SDK cu nivelul API 24+
+
+2. **Clonare și configurare**
    ```bash
    git clone https://github.com/numipasaaa/NeuRead.git
    cd NeuRead
    ```
 
-3. **Open in Android Studio**
-   - Open the project in Android Studio
-   - Let Gradle sync complete
-   - Run the app on an emulator or device
-
-### How to Contribute
-
-1. **Fork the repository**
-2. **Create your feature branch**
-   ```bash
-   git checkout -b feature/amazing-feature
-   ```
-3. **Make your changes**
-   - Follow the existing code style
-   - Add tests for new functionality, if possible
-   - Update documentation as needed
-4. **Commit your changes**
-   ```bash
-   git commit -m 'Add some amazing feature'
-   ```
-5. **Push to your branch**
-   ```bash
-   git push origin feature/amazing-feature
-   ```
-6. **Open a Pull Request**
-
-### Code Style Guidelines
-
-- Follow [Kotlin coding conventions](https://kotlinlang.org/docs/coding-conventions.html)
-- Use meaningful variable and function names
-- Keep functions small and focused
-- Write unit tests for new features, if possible
-
-### Areas for Contribution
-
-- **Bug Fixes**: Check our [Issues](https://github.com/answersolutions/runandread-android/issues)
-- **New Features**: E-book format support, UI improvements, accessibility features
-- **Documentation**: Code comments, user guides, architecture documentation
-- **Testing**: Unit tests, integration tests, UI tests
-- **Localization**: Translations for different languages
-- **Accessibility**: Improving app accessibility for all users
+3. **Deschide în Android Studio**
+   - Deschide proiectul în Android Studio
+   - Permite Gradle să finalizeze sincronizarea
+   - Rulează aplicația pe un emulator sau dispozitiv
 
 
-## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgments
+## Licență
 
-- Thanks to all the open-source libraries that made this project possible
-- Special thanks to our beta testers for their valuable feedback
+Acest proiect este licențiat sub licența MIT - consultă fișierul [LICENSE](LICENSE) pentru detalii.
+
+## Recunoșteri
+
+- Mulțumiri tuturor bibliotecilor open-source care au făcut posibil acest proiect.

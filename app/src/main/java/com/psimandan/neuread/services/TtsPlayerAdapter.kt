@@ -69,15 +69,15 @@ class TtsPlayerAdapter(
                 if (stateChanged || playWhenReady) {
                     val positionMs = getCurrentPosition()
                     val positionInfo = Player.PositionInfo(
-                        null, // windowUid
-                        0,    // mediaItemIndex
+                        null,
+                        0,
                         currentMediaItem,
-                        null, // periodUid
-                        0,    // periodIndex
+                        null,
+                        0,
                         positionMs,
-                        positionMs, // contentPositionMs
-                        -1,   // adGroupIndex
-                        -1    // adIndexInAdGroup
+                        positionMs,
+                        -1,
+                        -1
                     )
                     listeners.forEach { it.onPositionDiscontinuity(
                         positionInfo,

@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  neutts:
+    build:
+      context: .
+      dockerfile: neutts-main/Dockerfile
+    image: neutts-server:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - BACKBONE_PATH=/app/data/neutts-romanian-finetune/checkpoint-370000
+      - BACKBONE_DEVICE=cpu
+      - CODEC_DEVICE=cpu
+    volumes:
+      - ./neutts-main/data:/app/data:ro   
+      - ./neutts-main/logs:/app/logs
+    restart: unless-stopped

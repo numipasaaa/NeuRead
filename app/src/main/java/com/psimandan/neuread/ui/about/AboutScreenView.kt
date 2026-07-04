@@ -50,11 +50,11 @@ fun AboutScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Main Description
-            Text("NeuRead is a free, user-friendly text-to-speech app designed to bring your digital content to life. Using Android's text-to-speech engine, our app converts PDFs, EPUBs, TXT files, or any copied text into engaging audio—so you can enjoy your favorite books and articles anytime, anywhere.")
+            Text("NeuRead is a free, user-friendly text-to-speech app designed to bring your digital content to life. Using Android's text-to-speech engine, our app converts PDFs, EPUBs, TXT files, or any copied text into engaging audio, so you can enjoy your favorite books and articles anytime, anywhere.")
 
             // Our Mission Section
             Text("Our Mission", style = MaterialTheme.typography.headlineSmall)
-            Text("We believe that great literature and valuable information should be accessible to everyone. NeuRead makes it easy to listen to your digital content while you’re on the go—whether you’re exercising, commuting, or simply relaxing.")
+            Text("We believe that great literature and valuable information should be accessible to everyone. NeuRead makes it easy to listen to your digital content while you’re on the go.")
 
             // Curated Library Section
             Text("Curated Public Domain Library", style = MaterialTheme.typography.headlineSmall)
@@ -75,12 +75,12 @@ fun AboutScreen(
             Text("Legal & Copyright Notice", style = MaterialTheme.typography.headlineSmall)
             Text("NeuRead is committed to respecting intellectual property rights. Please use this app only for your personally purchased digital content or for works that are in the public domain. For preloaded books from Project Gutenberg and other sources, we adhere strictly to their guidelines and terms of use.")
 
-            Text("Thank you for choosing NeuRead. We hope our app enriches your daily routine by making reading more accessible and enjoyable!")
+            Text("Thank you for choosing NeuRead.")
 
             // Website Link
             Text("Visit our website:")
             TextButton(onClick = {
-                context.openExternalLink("https://answersolutions.net")
+                context.openExternalLink("https://psimandan.net")
             }) {
                 Text(
                     "www.psimandan.net",
@@ -90,10 +90,10 @@ fun AboutScreen(
 
             Text("Open-source tooling to create audiobooks in the NeuRead format:")
             TextButton(onClick = {
-                context.openExternalLink("https://github.com/sergenes/runandread-audiobook")
+                context.openExternalLink("https://github.com/numipasaaa/neuread")
             }) {
                 Text(
-                    "neuread-audiobook on GitHub",
+                    "neuread on GitHub",
                     style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.Underline)
                 )
             }

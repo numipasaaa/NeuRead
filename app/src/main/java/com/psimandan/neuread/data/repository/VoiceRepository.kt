@@ -68,8 +68,8 @@ class VoiceRepository @Inject constructor(
             latency = 200
         )
 
-        val petraVoice = NeuReadVoice(
-            name = "Petra (AI)",
+        val adrianVoice = NeuReadVoice(
+            name = "Adrian (AI)",
             language = "ro_RO",
             locale = Locale.forLanguageTag("ro-RO"),
             requiresNetworkConnection = true,
@@ -77,11 +77,38 @@ class VoiceRepository @Inject constructor(
             latency = 200
         )
 
+        val andreeaVoice = NeuReadVoice(
+            name = "Andreea (AI)",
+            language = "ro_RO",
+            locale = Locale.forLanguageTag("ro-RO"),
+            requiresNetworkConnection = true,
+            quality = 411,
+            latency = 200
+        )
+
+        val mihaelaVoice = NeuReadVoice(
+            name = "Mihaela (AI)",
+            language = "ro_RO",
+            locale = Locale.forLanguageTag("ro-RO"),
+            requiresNetworkConnection = true,
+            quality = 412,
+            latency = 200
+        )
+
+        val mihaiVoice = NeuReadVoice(
+            name = "Mihai (AI)",
+            language = "ro_RO",
+            locale = Locale.forLanguageTag("ro-RO"),
+            requiresNetworkConnection = true,
+            quality = 413,
+            latency = 200
+        )
+
         // 3. Fetch cloned voices from PrefsStore
         val clonedVoices = prefsStore.getClonedVoices().first().map { voice ->
             NeuReadVoice(
                 name = voice.name,
-                language = "en_US",
+                language = voice.language,
                 requiresNetworkConnection = true,
                 quality = 401,
                 latency = 200,
@@ -91,13 +118,12 @@ class VoiceRepository @Inject constructor(
         }
 
         // 4. Combine them and save to state
-        availableVoices = nativeVoices + joVoice + daveVoice + mateoVoice + gretaVoice + julietteVoice + petraVoice + clonedVoices.toSet()
+        availableVoices = nativeVoices + joVoice + daveVoice + mateoVoice + gretaVoice + julietteVoice + 
+                adrianVoice + andreeaVoice + mihaelaVoice + mihaiVoice + clonedVoices.toSet()
         return availableVoices
     }
 
     fun getAvailableLocales(): Set<Locale> {
-        // Update this to read from our combined list rather than just the native data source,
-        // ensuring the language tab in the UI shows up even if a network voice is the ONLY voice for that language.
         return availableVoices.map { it.locale }.toSet()
     }
 
@@ -119,13 +145,13 @@ class VoiceRepository @Inject constructor(
         return defaultVoice()
     }
 
-    fun localeToVoice(locale: Locale): NeuReadVoice {
-        return availableVoices.firstOrNull { it.locale.languageId() == locale.languageId() } ?: defaultVoice()
-    }
-
-    fun languageToLocale(language: String): Locale {
-        return getAvailableLocales().firstOrNull { it.languageId() == language } ?: Locale.getDefault()
-    }
+//    fun localeToVoice(locale: Locale): NeuReadVoice {
+//        return availableVoices.firstOrNull { it.locale.languageId() == locale.languageId() } ?: defaultVoice()
+//    }
+//
+//    fun languageToLocale(language: String): Locale {
+//        return getAvailableLocales().firstOrNull { it.languageId() == language } ?: Locale.getDefault()
+//    }
 
     private fun defaultVoice(): NeuReadVoice {
         return Voice("No voices installed", Locale.getDefault(), 5, 5, false, null).toNeuReadVoice()

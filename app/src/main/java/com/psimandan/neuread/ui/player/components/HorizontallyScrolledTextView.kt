@@ -57,18 +57,6 @@ fun HorizontallyScrolledTextViewPreview() {
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun HorizontallyScrolledTextViewPreviewRTL() {
-    NeuReadTheme(darkTheme = false) {
-        HorizontallyScrolledTextView(
-            highLight=true,
-            words = listOf("שלום", "כתוב", "תצוגה מקדימה", "איך", "אתה", "עושה", "היום"),
-            index = 4,
-            Locale("iw", "IL")
-        )
-    }
-}
 
 @Composable
 fun HorizontallyScrolledTextView(

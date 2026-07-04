@@ -100,7 +100,7 @@ class PrefsStoreImpl @Inject constructor(@ApplicationContext private val context
 
     override fun getThemeMode(): Flow<Int> {
         return context.dataStore.data.map {
-            it[THEME_MODE] ?: 0 // Default to 0 (Auto/Follow System)
+            it[THEME_MODE] ?: 0 // Default to 0 (Auto)
         }
     }
 

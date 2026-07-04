@@ -1,7 +1,6 @@
 package com.psimandan.neuread.ui.settings.components
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -9,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -47,9 +45,8 @@ fun VoicePickerPreview() {
 
             ),
             defaultVoice = NeuReadVoice("Voice 2", "en"),
-            onVoiceSelected = {},
+            onPlaySample = {},
             onSave = {},
-            onDeleteVoice = {},
             onDismiss = {}
         )
     }
@@ -61,29 +58,30 @@ fun VoicePicker(
     selectedLanguage: Locale,
     availableVoices: List<NeuReadVoice>,
     defaultVoice: NeuReadVoice,
-    onVoiceSelected: (NeuReadVoice) -> Unit,
+    onPlaySample: (NeuReadVoice) -> Unit,
     onSave: (NeuReadVoice) -> Unit,
-    onDeleteVoice: (NeuReadVoice) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val supportedVoices = remember(availableVoices, selectedLanguage) {
-        availableVoices.filter {
-            it.locale.languageId() == selectedLanguage.languageId()
-        }
+    val supportedVoices = availableVoices.filter {
+        it.locale.languageId() == selectedLanguage.languageId()
     }
 
-    val selectedVoice = remember {
-        mutableStateOf(defaultVoice)
+    val selectedVoiceName = remember {
+        mutableStateOf(defaultVoice.name)
     }
 
     fun isSelected(voice: NeuReadVoice): Boolean {
-        return voice.name == selectedVoice.value.name
+       return voice.name == selectedVoiceName.value
+    }
+
+    fun selectedOrDefaultVoice(): NeuReadVoice {
+        return supportedVoices.firstOrNull { it.name == selectedVoiceName.value } ?: defaultVoice
     }
 
     AlertDialog(
         onDismissRequest = { onDismiss() },
         confirmButton = {
-            Button(onClick = { onSave(selectedVoice.value) }) {
+            Button(onClick = { onSave(selectedOrDefaultVoice()) }) {
                 Text("Save")
             }
         },
@@ -93,22 +91,28 @@ fun VoicePicker(
             }
         },
         title = {
-            Text(
-                text = "Select Voice",
-                style = MaterialTheme.typography.headlineSmall,
-                textAlign = TextAlign.Start,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+
         },
         text = {
             Column {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = "Select Voice",
+                        style = MaterialTheme.typography.headlineMedium,
+                        textAlign = TextAlign.Start,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(Modifier.height(largeSpace))
                 LazyColumn {
                     items(supportedVoices.size) { index ->
                         val voice = supportedVoices[index]
                         ListItem(
                             colors = ListItemDefaults.colors(
                                 containerColor = if (isSelected(voice)) {
-                                    MaterialTheme.colorScheme.primaryContainer
+                                    MaterialTheme.colorScheme.primary
                                 } else {
                                     MaterialTheme.colorScheme.surface
                                 }
@@ -116,52 +120,29 @@ fun VoicePicker(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .selectable(selected = (isSelected(voice))) {
-                                    selectedVoice.value = supportedVoices[index]
-                                    onVoiceSelected(selectedVoice.value)
+                                    selectedVoiceName.value = supportedVoices[index].name
                                 },
                             headlineContent = {
                                 Text(
                                     voice.name,
                                     color = if (isSelected(voice)) {
-                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                        MaterialTheme.colorScheme.surface
                                     } else {
-                                        MaterialTheme.colorScheme.onSurface
+                                        MaterialTheme.colorScheme.primary
                                     }
                                 )
                             },
                             trailingContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (voice.clonedVoice != null) {
-                                        IconButton(onClick = {
-                                            onDeleteVoice(voice)
-                                            if (isSelected(voice)) {
-                                                selectedVoice.value = supportedVoices.firstOrNull { it.name != voice.name } ?: defaultVoice
-                                            }
-                                        }) {
-                                            Icon(
-                                                imageVector = Icons.Default.Delete,
-                                                contentDescription = "Delete Voice",
-                                                tint = if (isSelected(voice)) {
-                                                    MaterialTheme.colorScheme.onPrimaryContainer
-                                                } else {
-                                                    MaterialTheme.colorScheme.error
-                                                }
-                                            )
+                                IconButton(onClick = { onPlaySample(voice) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayCircleOutline,
+                                        contentDescription = "Play Sample",
+                                        tint = if (isSelected(voice)) {
+                                            MaterialTheme.colorScheme.surface
+                                        } else {
+                                            MaterialTheme.colorScheme.primary
                                         }
-                                    }
-                                    IconButton(onClick = {
-                                        onVoiceSelected(voice)
-                                    }) {
-                                        Icon(
-                                            imageVector = Icons.Default.PlayCircleOutline,
-                                            contentDescription = "Play Sample",
-                                            tint = if (isSelected(voice)) {
-                                                MaterialTheme.colorScheme.onPrimaryContainer
-                                            } else {
-                                                MaterialTheme.colorScheme.primary
-                                            }
-                                        )
-                                    }
+                                    )
                                 }
                             }
                         )

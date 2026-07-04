@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import javax.inject.Inject
 
 object TextTimeRelationsTools {
@@ -119,38 +120,38 @@ class PlayerViewModel @Inject constructor(
 
     override val book: NeuReadBook? get() = _state.value.book
     private var player: BookPlayer? = null
+    
+    private var lastSaveTime = 0L
+    private val SAVE_INTERVAL_MS = 5000L // Save position to disk every 5 seconds
 
-    private fun switchPlayerToAudio(audioBook: AudioBook) {
+    init {
         viewModelScope.launch {
-            val isCurrentlyPlaying = _state.value.isSpeaking
-            val currentPos = player?.currentTimeElapsed() ?: 0L
+            libraryRepository.libraryChanges.collect {
+                val currentBook = _state.value.book
+                val updatedSelectedBook = libraryRepository.getSelectedBook()
+                
+                if (updatedSelectedBook?.id == currentBook?.id) {
+                    val typeChanged = (currentBook is Book && updatedSelectedBook is AudioBook) ||
+                                      (currentBook is AudioBook && updatedSelectedBook is Book)
+                    
+                    val rateChanged = currentBook?.voiceRate != updatedSelectedBook?.voiceRate
+                    val voiceChanged = (currentBook as? Book)?.voiceIdentifier != (updatedSelectedBook as? Book)?.voiceIdentifier
 
-            player?.onClose()
-
-            player = AudioBookPlayer(
-                application,
-                speakingCallback = this@PlayerViewModel
-            )
-
-            player?.let { playerInstance ->
-                playerUseCase.setBookPlayer(playerInstance)
-                bookmarkUseCase.setBookPlayer(playerInstance)
-            }
-
-            // Sync the internal lastPosition of the audiobook with the current progress
-            // This ensures that when initialized, the player starts from the right place
-            val positionToSeek = (currentPos / 1000).toFloat()
-            player?.onUserChangePosition(positionToSeek)
-            
-            if (isCurrentlyPlaying) {
-                // If it was playing, we restart it. 
-                // Note: The user said "dont want it to play automatically", 
-                // but this usually means "don't start playing if I wasn't already listening".
-                // If they WERE listening, we should continue.
-                player?.onPlay(com.psimandan.neuread.PlaybackSource.AUTO_PLAY)
-            } else {
-                // If it wasn't playing, we just make sure the UI is ready at the new position
-                player?.updateCallback(this@PlayerViewModel)
+                    if (typeChanged) {
+                        Timber.d("PlayerViewModel: Book type changed, refreshing engine")
+                        setUpBook()
+                    } else if (rateChanged || voiceChanged) {
+                        Timber.d("PlayerViewModel: Metadata changed (rate/voice), updating player")
+                        // If it's just a rate change, we can sometimes update the existing player
+                        if (rateChanged) {
+                            updatedSelectedBook?.let { player?.onUpdateSpeechRate(it.voiceRate) }
+                        }
+                        // For voice change in TTS, we might need a full reset
+                        if (voiceChanged || (rateChanged && currentBook is AudioBook)) {
+                           setUpBook()
+                        }
+                    }
+                }
             }
         }
     }
@@ -238,44 +239,28 @@ class PlayerViewModel @Inject constructor(
 
     fun setUpBook() {
         viewModelScope.launch {
-            playerStateRepository.getSpeechRate().collect { rate ->
-                rate?.let {
-                    player?.onUpdateSpeechRate(it)
-                }
-            }
-        }
-
-        viewModelScope.launch {
             val existingPlayer = playerUseCase.getBookPlayer()
-            val currentBook = playerStateRepository.getCurrentBook().first()
-            val currentBookId = currentBook?.id
-            val selectedBookId = libraryRepository.getSelectedBook()?.id
+            val currentBookId = playerStateRepository.getCurrentBook().first()?.id
+            val selectedBook = withContext(Dispatchers.IO) {
+                libraryRepository.getSelectedBook()
+            }
+            val selectedBookId = selectedBook?.id
 
             if (existingPlayer != null && currentBookId != null && currentBookId == selectedBookId) {
-                // Ensure the player type matches the book type (e.g., after deletion/re-download)
-                val isTypeMismatch = (currentBook is AudioBook && existingPlayer !is AudioBookPlayer) ||
-                        (currentBook is Book && existingPlayer !is SpeechBookPlayer)
+                player = existingPlayer
+                // Always prefer the latest persisted selected book to avoid stale metadata rollback (e.g. voice).
+                val activeBook = selectedBook ?: playerStateRepository.getCurrentBook().first()
+                _state.update { it.copy(book = activeBook, isLoading = false) }
+                activeBook?.let { playerStateRepository.setCurrentBook(it) }
 
-                if (!isTypeMismatch) {
-                    player = existingPlayer
-                    _state.update { it.copy(book = currentBook, isLoading = false) }
-
-                    // If player exists, we need to sync the UI state immediately
-                    // The player is already initialized and possibly playing
-                    player?.updateCallback(this@PlayerViewModel)
-                    return@launch
-                } else {
-                    // Type mismatch occurred (e.g. AI Audio was deleted), close old player
-                    existingPlayer.onClose()
-                }
+                // If player exists, we need to sync the UI state immediately
+                player?.updateCallback(this@PlayerViewModel)
+                return@launch
             }
 
             _highlightingState.value = HighlightingUIState()
             _state.value = PlayerUIState(isLoading = true)
 
-            val selectedBook = withContext(Dispatchers.IO) {
-                libraryRepository.getSelectedBook()
-            }
             _state.update { it.copy(book = selectedBook, isLoading = true) }
 
             selectedBook?.let { book ->
@@ -308,23 +293,6 @@ class PlayerViewModel @Inject constructor(
 
                 // Update repository state
                 playerStateRepository.setCurrentBook(book)
-
-                viewModelScope.launch {
-                    playerStateRepository.getCurrentBook().collect { updatedBook ->
-                        if (updatedBook != null && updatedBook.id == book.id) {
-                            val previousBook = _state.value.book
-                            _state.update { it.copy(book = updatedBook) }
-
-                            if (previousBook is Book && updatedBook is AudioBook) {
-                                // Transition from TTS to AI Audio if it just became an AudioBook
-                                switchPlayerToAudio(updatedBook)
-                            } else if (previousBook is AudioBook && updatedBook is Book) {
-                                // Transition from AI Audio back to TTS if it was deleted
-                                setUpBook()
-                            }
-                        }
-                    }
-                }
 
                 _state.value = _state.value.copy(
                     chapters = when (book) {
@@ -383,6 +351,11 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             playerUseCase.pause()
             _state.update { it.copy(isSpeaking = false, isLoading = false) }
+            
+            // Immediate save on pause
+            book?.let {
+                libraryRepository.updateBook(it, notify = false)
+            }
         }
     }
 
@@ -390,7 +363,6 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             stopPlaybackService()
             player?.onClose()
-            _state.update { it.copy(book = null, isSpeaking = false) }
         }
     }
 
@@ -466,9 +438,16 @@ class PlayerViewModel @Inject constructor(
         pUIState: PlayerUIState,
         hUIState: HighlightingUIState
     ) {
+        val currentTime = System.currentTimeMillis()
+        
         viewModelScope.launch {
             playerStateRepository.setCurrentBook(updatedBook)
-            libraryRepository.updateBook(updatedBook)
+            
+            // Debounced persistent save to disk (notify = false to avoid flickering)
+            if (currentTime - lastSaveTime > SAVE_INTERVAL_MS) {
+                lastSaveTime = currentTime
+                libraryRepository.updateBook(updatedBook, notify = false)
+            }
 
             // PUSH REAL-TIME TIME AND DURATION TO GLOBAL STATE
             playerStateRepository.updatePlaybackState(

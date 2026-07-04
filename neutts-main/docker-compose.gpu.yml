@@ -1,0 +1,24 @@
+version: "3.9"
+services:
+  neutts:
+    build:
+      context: .
+      dockerfile: neutts-main/Dockerfile.gpu
+    image: neutts-server:gpu
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - BACKBONE_PATH=/app/data/neutts-romanian-finetune/checkpoint-370000
+      - BACKBONE_DEVICE=cuda
+      - CODEC_DEVICE=cuda
+    volumes:
+      - ./neutts-main/data:/app/data:ro
+      - ./neutts-main/logs:/app/logs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    stdin_open: true
+    tty: true

@@ -41,7 +41,7 @@ class LibraryDiskDataSource @Inject constructor(@ApplicationContext private val 
             }
         }
 
-        // Load audiobooks (priority over regular books)
+        // Load audiobooks
         audiobooksDir.listFiles()?.forEach { file ->
             try {
                 val jsonText = file.readText()

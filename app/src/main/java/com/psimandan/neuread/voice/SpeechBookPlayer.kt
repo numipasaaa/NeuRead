@@ -22,7 +22,6 @@ import java.util.*
 import kotlin.math.max
 import kotlin.math.min
 
-import com.psimandan.neuread.data.datasource.ClonedVoice
 import com.psimandan.neuread.data.datasource.PrefsStore
 import kotlinx.coroutines.flow.first
 import android.media.AudioAttributes
@@ -31,14 +30,6 @@ import android.media.AudioTrack
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Collections
-
-fun String.cleanedForTTS(): String {
-    return this.replace(",,", ",").replace("..", ".").filter { char ->
-        char.isLetterOrDigit() ||
-                char.isWhitespace() ||
-                char in listOf('.', ',', '?', '!', '\'', '"', '-')
-    }
-}
 
 
 interface SpeakingCallBack {
@@ -76,10 +67,11 @@ class SpeechBookPlayer(
 
     private val playerScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main)
     private var audioTrack: AudioTrack? = null
+    @Volatile
     private var words = listOf<String>()
     private var selectedSpeechRate: Float = 1f
+    @Volatile
     private var currentWordIndex = 0
-    private var totalWords: Int = 0
     private var isPlaying = false
     private var frameStartIndex = 0
     private var wordOffsets = listOf<Int>()
@@ -110,10 +102,20 @@ class SpeechBookPlayer(
         playerScope.launch {
             try {
                 // Setup the UI state
-                words = book.text.flatMap { it.cleanedForTTS().split("\\s+".toRegex()) }
+                // 1. Join and clean text to avoid newline interference with sentence splitting
+                val sanitizedContent = book.text.joinToString(" ")
+                    .replace("\n", " ")
+                    .replace("\r", " ")
+                    .replace("\t", " ")
+                    .replace(Regex("\\s+"), " ")
+                    .trim()
+                
+                val splitWords = sanitizedContent.split(" ")
                     .mapNotNull { it.takeIf { it.isNotEmpty() } }
-                totalWords = words.size
-                currentWordIndex = book.lastPosition
+                    .toList()
+                
+                words = splitWords
+                currentWordIndex = book.lastPosition.coerceIn(0, (splitWords.size - 1).coerceAtLeast(0))
                 selectedSpeechRate = book.voiceRate
 
                 book.lazyCalculate {
@@ -147,12 +149,20 @@ class SpeechBookPlayer(
             if (status == TextToSpeech.SUCCESS) {
                 val player = textToSpeech!!
 
-                words = book.text.flatMap { it.cleanedForTTS().split("\\s+".toRegex()) }
+                val sanitizedContent = book.text.joinToString(" ")
+                    .replace("\n", " ")
+                    .replace("\r", " ")
+                    .replace("\t", " ")
+                    .replace(Regex("\\s+"), " ")
+                    .trim()
+                
+                val splitWords = sanitizedContent.split(" ")
                     .mapNotNull { it.takeIf { it.isNotEmpty() } }
+                    .toList()
 
-                totalWords = words.size
+                words = splitWords
                 selectedSpeechRate = book.voiceRate
-                currentWordIndex = book.lastPosition
+                currentWordIndex = book.lastPosition.coerceIn(0, (splitWords.size - 1).coerceAtLeast(0))
 
                 player.language = selectedLanguage
                 player.voice = voice
@@ -183,7 +193,6 @@ class SpeechBookPlayer(
         }
     }
 
-    var tmp_start = 0
     private val ttsListener = object : UtteranceProgressListener() {
         override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
             Timber.d("onRangeStart: start=$start end=$end frame=$frame")
@@ -247,16 +256,19 @@ class SpeechBookPlayer(
     }
 
     fun onNextWord() {
-        Timber.d("onNextWord: index=$currentWordIndex, total=$totalWords")
-        if (currentWordIndex < totalWords - 1) {
-            playNextFrame()
-        } else {
-            Timber.d("Reached end of book")
-            speakingCallback.onUpdateUI(
-                speakingCallback.viewState.value.copy(
-                    isSpeaking = false
+        playerScope.launch {
+            val currentWords = words
+            Timber.d("onNextWord: index=$currentWordIndex, total=${currentWords.size}")
+            if (currentWordIndex < currentWords.size - 1) {
+                playNextFrame()
+            } else {
+                Timber.d("Reached end of book")
+                speakingCallback.onUpdateUI(
+                    speakingCallback.viewState.value.copy(
+                        isSpeaking = false
+                    )
                 )
-            )
+            }
         }
     }
 
@@ -283,10 +295,14 @@ class SpeechBookPlayer(
                     val currentClonedVoice = clonedVoices.find { it.name == voice.name }
                     
                     if (currentClonedVoice != null) {
+                        // Use language from cloned voice metadata if available
+                        val clonedLang = if (currentClonedVoice.language.lowercase().startsWith("ro")) "ro" else null
+                        
                         neuTtsApiClient?.cloneWithCodes(
                             text = text,
                             refText = currentClonedVoice.referenceText,
-                            refCodes = currentClonedVoice.codes
+                            refCodes = currentClonedVoice.codes,
+                            language = clonedLang
                         )
                     } else {
                         val book = speakingCallback.book as? Book
@@ -294,16 +310,17 @@ class SpeechBookPlayer(
                         // LOG THE FULL STATE TO SEE WHY IT'S FAILING
                         Timber.d("NeuTTS DECISION: voice.name=${voice.name}, book.lang=${book?.language}")
 
-                        val isRomanianVoice = voice.name.contains("Petra", ignoreCase = true)
+                        val romanianVoices = listOf("Adrian", "Andreea", "Mihaela", "Mihai")
+                        val isRomanianVoice = romanianVoices.any { voice.name.contains(it, ignoreCase = true) }
                         
                         // Voice name for the server
                         val voiceParam = if (isRomanianVoice) {
-                            "petra"
+                            romanianVoices.find { voice.name.contains(it, ignoreCase = true) }?.lowercase() ?: "adrian"
                         } else {
                             voice.name.lowercase().removeSuffix(" (ai)").trim()
                         }
 
-                        // Force language to "ro" for the Romanian Petra voice to ensure finetune activation
+                        // Force language to "ro" for the Romanian voices to ensure finetune activation
                         val langParam = if (isRomanianVoice) "ro" else (book?.language ?: voice.locale.language)
                         
                         Timber.d("NeuTTS FINAL REQUEST: voiceParam=$voiceParam, langParam=$langParam")
@@ -336,17 +353,15 @@ class SpeechBookPlayer(
         } else {
             // Route to standard Android TTS
             val utteranceId = "my_utterance_id"
-            val params = Bundle().apply {
-                putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
-            }
             textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
         }
     }
 
     private fun calculateElapsedTime(progress: Int): Double {
+        val currentWords = words
         var totalChars = 0
-        for (i in 0 until min(progress, words.size)) {
-            totalChars += words[i].length + 1
+        for (i in 0 until min(progress, currentWords.size)) {
+            totalChars += currentWords[i].length + 1
         }
         val seconds = (totalChars * SECONDS_PER_CHARACTER) / selectedSpeechRate
         return seconds
@@ -360,20 +375,55 @@ class SpeechBookPlayer(
         playNextFrame()
     }
 
+    private fun findOptimalFrameEnd(startIndex: Int, currentWords: List<String>): Int {
+        val total = currentWords.size
+        if (total == 0 || startIndex >= total) return startIndex
+
+        val targetSize = FRAME_SIZE
+        val searchWindow = 50 // Large window to ensure we find a natural sentence end
+        
+        val maxIndex = minOf(startIndex + targetSize + searchWindow, total)
+        val minIndex = maxOf(startIndex + 10, startIndex + targetSize - searchWindow)
+
+        // 1. Priority: Find the absolute latest terminal punctuation (. ! ?) in the forward search window
+        // This makes the player "greedy" to complete a sentence.
+        for (i in (maxIndex - 1) downTo minOf(startIndex + targetSize, total)) {
+            if (i >= 0 && i < currentWords.size && currentWords[i].any { it in listOf('.', '!', '?') }) {
+                // Confirm it's likely a sentence end (not part of an ellipsis)
+                if (i + 1 < currentWords.size && !currentWords[i+1].any { it in listOf('.', '!', '?') }) {
+                    return i + 1
+                }
+                if (i + 1 == total) return total
+            }
+        }
+
+        // 3. Fallback: Weak breaks (commas, semicolons) forward
+        for (i in minOf(startIndex + targetSize, total) until maxIndex) {
+            if (i >= 0 && i < currentWords.size && currentWords[i].any { it in listOf(',', ';', ':') }) {
+                return i + 1
+            }
+        }
+
+        // 4. Ultimate fallback: just cut at targetSize
+        return minOf(startIndex + targetSize, total)
+    }
+
     private fun playNextFrame() {
-        if (words.isEmpty() || currentWordIndex >= words.size) {
+        val currentWords = words
+        val startIndex = currentWordIndex
+        if (currentWords.isEmpty() || startIndex >= currentWords.size) {
             Timber.d("playNextFrame: No more words or empty list")
             return
         }
-        val toIndex = minOf(currentWordIndex + FRAME_SIZE, totalWords)
+        val toIndex = findOptimalFrameEnd(startIndex, currentWords)
         val hState = speakingCallback.highlightingState.value
 
-        val frame = words.subList(currentWordIndex, toIndex)
+        val frame = currentWords.subList(startIndex, toIndex)
         val frameSize = frame.size
-        frameStartIndex = currentWordIndex
+        frameStartIndex = startIndex
         wordOffsets = calculateWordOffsets(frame)
         
-        Timber.d("playNextFrame: index=$currentWordIndex, toIndex=$toIndex, frameSize=$frameSize")
+        Timber.d("playNextFrame: index=$startIndex, toIndex=$toIndex, frameSize=$frameSize")
 
         // Reset currentWordIndexInFrame to 0 before starting new frame
         speakingCallback.onUpdateHighlightingUI(
@@ -445,15 +495,20 @@ class SpeechBookPlayer(
     }
 
     private fun titleForBookmark(position: Int): String {
-        val elapsedTimeToShow = calculateElapsedTime(position).formatSecondsToHMS()//
-        val from = max(0, position - 5)
-        val to = min(words.size - 1, position + 10)
+        val currentWords = words
+        val total = currentWords.size
+        val elapsedTimeToShow = calculateElapsedTime(position).formatSecondsToHMS()
+        
+        if (total == 0) return "$elapsedTimeToShow | Unknown Bookmark"
+        
+        val from = max(0, position - 5).coerceAtMost(total)
+        val to = min(total, position + 10)
 
-        if (to <= words.size && words.isNotEmpty()) {
-            val t = words.subList(from, to)
-            return "$elapsedTimeToShow | ${t.joinToString(" ")}"
+        return if (from < to) {
+            val t = currentWords.subList(from, to)
+            "$elapsedTimeToShow | ${t.joinToString(" ")}"
         } else {
-            return "$elapsedTimeToShow | Unknown Bookmark"
+            "$elapsedTimeToShow | Unknown Bookmark"
         }
     }
 
@@ -476,6 +531,8 @@ class SpeechBookPlayer(
         this.selectedSpeechRate = book.voiceRate
         
         fun sendReady() {
+            val currentWords = words
+            val total = currentWords.size
             val viewState = book.viewState.value
             val secondsElapsed = calculateElapsedTime(currentWordIndex)
             val pState = PlayerUIState(
@@ -494,9 +551,9 @@ class SpeechBookPlayer(
             speakingCallback.onReady(uiState = pState)
             
             // Sync highlighting state with accurate current word within frame
-            val toIndex = minOf(frameStartIndex + FRAME_SIZE, totalWords)
-            val frame = if (words.isNotEmpty() && frameStartIndex < words.size) {
-                words.subList(frameStartIndex, toIndex)
+            val toIndex = minOf(frameStartIndex + FRAME_SIZE, total)
+            val frame = if (currentWords.isNotEmpty() && frameStartIndex < total) {
+                currentWords.subList(frameStartIndex, toIndex)
             } else {
                 emptyList()
             }
@@ -645,13 +702,14 @@ class SpeechBookPlayer(
     }
 
     fun wordIndexFromSeconds(seconds: Double): Int {
+        val currentWords = words
         val targetChars = (seconds * selectedSpeechRate) / SECONDS_PER_CHARACTER
         var currentChars = 0
-        for (i in words.indices) {
+        for (i in currentWords.indices) {
             if (currentChars >= targetChars) return i
-            currentChars += words[i].length + 1 // +1 for space
+            currentChars += currentWords[i].length + 1 // +1 for space
         }
-        return words.size
+        return currentWords.size
     }
 
     override fun onUserChangePosition(value: Float) {
@@ -664,7 +722,7 @@ class SpeechBookPlayer(
         isPlaying = false
         onStopSpeaking()
 
-        currentWordIndex = index.coerceIn(0, (totalWords - 1).coerceAtLeast(0))
+        currentWordIndex = index.coerceIn(0, (words.size - 1).coerceAtLeast(0))
 
         val hState = speakingCallback.highlightingState.value
         val book = speakingCallback.book as Book
@@ -700,9 +758,4 @@ class SpeechBookPlayer(
         }
         return offsets
     }
-
-    /**
-     * Reverted to Client-Server implementation. 
-     * Offline methods (decodeTokensToAudio, playAudioWaveform) removed.
-     */
 }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,15 +23,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,11 +43,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.ui.text.style.TextOverflow
 import com.psimandan.neuread.ui.theme.OpenDyslexic
 import androidx.compose.foundation.layout.Arrangement
@@ -56,14 +58,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -71,7 +72,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.psimandan.neuread.data.model.AudioBook
 import com.psimandan.neuread.data.model.Book
 import com.psimandan.neuread.data.model.NeuReadBook
@@ -123,7 +123,8 @@ fun BookSettingsPreviewBook() {
             selectedRate = 1f,
             dyslexicFontEnabled = false,
             highlightingEnabled = true,
-            onDeleteVoice = {},
+            isEditingText = false,
+            editingText = "",
             onEvent = {}
         )
     }
@@ -172,7 +173,8 @@ fun BookSettingsPreviewAudiobook() {
             selectedRate = 1f,
             dyslexicFontEnabled = false,
             highlightingEnabled = true,
-            onDeleteVoice = {},
+            isEditingText = false,
+            editingText = "",
             onEvent = {}
         )
     }
@@ -196,13 +198,19 @@ fun BookSettingsScreenView(
         bookState.parts.map { it.text }
     }
     val selectedLanguage = bookState.language.toLocale()
-    val selectedVoice = voiceSelector.nameToVoice(bookState.voiceIdentifier, bookState.language)
+    val selectedVoice = voiceSelector.nameToVoice(
+        bookState.voiceIdentifier.ifBlank {
+            (bookState.book as? AudioBook)?.voice.orEmpty()
+        },
+        bookState.language
+    )
 //    val selectedRate = bookState.voiceRate
 
 
     LaunchedEffect(Unit) {
         viewModel.setUpBook()
         viewModel.loadSettings()
+        voiceSelector.loadVoices()
     }
 
     BookSettingsScreenContent(
@@ -220,10 +228,8 @@ fun BookSettingsScreenView(
         selectedVoice = selectedVoice,
         dyslexicFontEnabled = viewState.dyslexicFontEnabled,
         highlightingEnabled = viewState.highlightingEnabled,
-        onDeleteVoice = { voice ->
-            voiceSelector.deleteVoice(voice)
-            viewModel.validateSelectedVoice(voices)
-        },
+        isEditingText = viewState.isEditingText,
+        editingText = viewState.editingText,
         onEvent = { it.onEvent(model = viewModel, onNavigateBack = onNavigateBack) }
     )
 
@@ -260,7 +266,8 @@ fun BookSettingsScreenContent(
     selectedLanguage: Locale,
     dyslexicFontEnabled: Boolean,
     highlightingEnabled: Boolean,
-    onDeleteVoice: (NeuReadVoice) -> Unit,
+    isEditingText: Boolean,
+    editingText: String,
     onEvent: (BookSettingsEvent) -> Unit
 ) {
     Box(Modifier.background(colorScheme.background)) {
@@ -359,21 +366,12 @@ fun BookSettingsScreenContent(
                                 .fillMaxWidth()
                                 .animateContentSize()
                         ) {
-                            if (bookState.book is Book) {
+                            val audioBook = bookState.book as? AudioBook
+
+                            if (bookState.book is Book || audioBook != null) {
                                 NiceButton(
                                     title = selectedVoice.name,
-                                    clickHandler = {
-                                        showVoiceDialog.value = true
-                                    },
-                                )
-                            } else if (bookState.book is AudioBook) {
-                                val book = bookState.book
-                                Text(
-                                    text = book.model + "\n" + book.voice,
-                                    style = scTypography.titleLarge,
-                                    color = colorScheme.onSurface,
-                                    textAlign = TextAlign.Start,
-                                    modifier = Modifier.padding(top = smallSpace)
+                                    clickHandler = { showVoiceDialog.value = true },
                                 )
                             }
 
@@ -381,27 +379,37 @@ fun BookSettingsScreenContent(
 
                             IconButton(onClick = {
                                 onEvent(
-                                    if (bookState.book is Book) {
-                                        BookSettingsEvent.PlayVoiceSample(
-                                            selectedLanguage,
-                                            selectedVoice.toVoice(),
-                                            selectedRate
-                                        )
-                                    } else {
-                                        BookSettingsEvent.PlayAudioSample
-                                    }
+                                    BookSettingsEvent.PlayVoiceSample(
+                                        selectedLanguage,
+                                        selectedVoice.toVoice(),
+                                        selectedRate
+                                    )
                                 )
                             }) {
                                 Icon(
                                     imageVector = Icons.Default.PlayCircleOutline,
-                                    contentDescription = "play/stop sample",
+                                    contentDescription = "play voice sample",
                                     tint = colorScheme.primary,
                                     modifier = Modifier.size(44.dp)
                                 )
                             }
-                            if (bookState.book is Book) {
+
+                            if (bookState.book is AudioBook) {
+                                IconButton(onClick = {
+                                    onEvent(BookSettingsEvent.PlayAudioSample)
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Audiotrack,
+                                        contentDescription = "play book audio",
+                                        tint = colorScheme.secondary,
+                                        modifier = Modifier.size(44.dp)
+                                    )
+                                }
+                            }
+
+                            if (downloadProgress != null) {
                                 AnimatedVisibility(
-                                    visible = downloadProgress != null,
+                                    visible = true,
                                     enter = fadeIn() + scaleIn(),
                                     exit = fadeOut() + scaleOut()
                                 ) {
@@ -411,7 +419,7 @@ fun BookSettingsScreenContent(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             val animatedProgress by animateFloatAsState(
-                                                targetValue = downloadProgress ?: 0f,
+                                                targetValue = downloadProgress,
                                                 animationSpec = spring(stiffness = Spring.StiffnessLow),
                                                 label = "downloadProgress"
                                             )
@@ -434,29 +442,48 @@ fun BookSettingsScreenContent(
                                         }
                                     }
                                 }
-                                if (downloadProgress == null && selectedVoice.requiresNetworkConnection) {
-                                    IconButton(onClick = {
-                                        onEvent(BookSettingsEvent.DownloadAudio)
-                                    }) {
+                            }
+
+                            when (val currentBook = bookState.book) {
+                                is Book -> {
+                                    if (downloadProgress == null && selectedVoice.requiresNetworkConnection) {
+                                        IconButton(onClick = { onEvent(BookSettingsEvent.DownloadAudio) }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = "download audio",
+                                                tint = colorScheme.primary,
+                                                modifier = Modifier.size(44.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                is AudioBook -> {
+                                    if (downloadProgress == null && (
+                                            selectedVoice.name != currentBook.voice ||
+                                                    selectedRate != currentBook.voiceRate
+                                            )) {
+                                        IconButton(onClick = { onEvent(BookSettingsEvent.DownloadAudio) }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = "redownload audio",
+                                                tint = colorScheme.primary,
+                                                modifier = Modifier.size(44.dp)
+                                            )
+                                        }
+                                    }
+
+                                    IconButton(onClick = { onEvent(BookSettingsEvent.DeleteAudio) }) {
                                         Icon(
-                                            imageVector = Icons.Default.Download,
-                                            contentDescription = "download audio",
-                                            tint = colorScheme.primary,
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "delete audio",
+                                            tint = colorScheme.error,
                                             modifier = Modifier.size(44.dp)
                                         )
                                     }
                                 }
-                            } else if (bookState.book is AudioBook) {
-                                IconButton(onClick = {
-                                    onEvent(BookSettingsEvent.DeleteAudio)
-                                }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "delete audio",
-                                        tint = colorScheme.error,
-                                        modifier = Modifier.size(44.dp)
-                                    )
-                                }
+
+                                null -> Unit
                             }
 
                         }
@@ -500,8 +527,9 @@ fun BookSettingsScreenContent(
                                     )
                                     .padding(normalSpace)
                             ) {
+                                val previewText = contextText.getOrNull(selectedPage) ?: ""
                                 Text(
-                                    text = contextText[selectedPage],
+                                    text = previewText,
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontFamily = if (dyslexicFontEnabled) OpenDyslexic else FontFamily.Default
                                     ),
@@ -568,6 +596,12 @@ fun BookSettingsScreenContent(
                         }
                     }
                     Spacer(Modifier.height(normalSpace))
+                    NiceButtonLarge(
+                        title = if (bookState.bookSource == "clipboard") "Edit Entire Text" else "Edit Current Page Content",
+                        color = colorScheme.secondary,
+                        clickHandler = { onEvent(BookSettingsEvent.OpenTextEditor) },
+                    )
+                    Spacer(Modifier.height(normalSpace))
                     NiceButtonLarge(title = "Delete This Book", color = colorScheme.error) {
                         onEvent(BookSettingsEvent.DeleteClicked)
                     }
@@ -586,7 +620,7 @@ fun BookSettingsScreenContent(
                         VoicePicker(selectedLanguage = selectedLanguage,
                             defaultVoice = selectedVoice,
                             availableVoices = availableVoices,
-                            onVoiceSelected = {
+                            onPlaySample = {
                                 onEvent(
                                     BookSettingsEvent.PlayVoiceSample(
                                         selectedLanguage,
@@ -599,9 +633,6 @@ fun BookSettingsScreenContent(
                                 onEvent(BookSettingsEvent.VoiceSelected(it))
                                 showVoiceDialog.value = false
                             },
-                            onDeleteVoice = {
-                                onDeleteVoice(it)
-                            },
                             onDismiss = {
                                 showVoiceDialog.value = false
                             })
@@ -609,6 +640,14 @@ fun BookSettingsScreenContent(
                 }
             }
         )
+        if (loading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        }
         if (showVoiceError) {
             ErrorMessageDialog(
                 title = "Voice Error",
@@ -617,6 +656,76 @@ fun BookSettingsScreenContent(
                     onEvent(BookSettingsEvent.DismissVoiceErrorDialog)
                 }
             )
+        }
+    }
+
+    if (isEditingText) {
+        TextEditorDialog(
+            initialText = editingText,
+            onSave = { onEvent(BookSettingsEvent.SaveEditedText(it)) },
+            onDismiss = { onEvent(BookSettingsEvent.CloseTextEditor) }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TextEditorDialog(
+    initialText: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var text by remember { mutableStateOf(initialText) }
+    
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.8f),
+            shape = RoundedCornerShape(24.dp),
+            color = colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(largeSpace)
+                    .fillMaxSize()
+            ) {
+                Text(
+                    text = "Edit Page Content",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = normalSpace)
+                )
+                
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        focusedBorderColor = colorScheme.primary,
+                        unfocusedBorderColor = colorScheme.outline
+                    )
+                )
+                
+                Spacer(modifier = Modifier.height(normalSpace))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(normalSpace))
+                    Button(onClick = { onSave(text) }) {
+                        Text("Save")
+                    }
+                }
+            }
         }
     }
 }

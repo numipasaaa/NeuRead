@@ -147,7 +147,7 @@ class EBookDataSource @Inject constructor(
             while (entry != null) {
                 val outputFile = File(outputDir, entry.name)
 
-                // Guard against Zip Slip: reject entries that resolve outside outputDir
+                // Reject entries that resolve outside outputDir
                 if (!outputFile.canonicalPath.startsWith(outputDirCanonical + File.separator)) {
                     throw IOException("Zip Slip detected: illegal entry path '${entry.name}'")
                 }
@@ -229,7 +229,7 @@ class EBookDataSource @Inject constructor(
                     }
                 }
 
-                // Ensure chapters are unique and sorted (some PDFs have multiple outline items for same page)
+                // Ensure chapters are unique and sorted
                 val finalChapters = chapters.distinctBy { it.startIndex }.sortedBy { it.startIndex }
 
                 Timber.d("PDF: $title ($author) with ${finalChapters.size} chapters and ${content.size} pages")
@@ -244,7 +244,7 @@ class EBookDataSource @Inject constructor(
                     rate = 1.0f,
                     voice = "",
                     model = "",
-                    bookSource = ""
+                    bookSource = "pdf"
                 )
             }
         } catch (e: Exception) {
@@ -315,7 +315,7 @@ class EBookDataSource @Inject constructor(
                 rate = 1.0f,
                 voice = "",
                 model = "",
-                bookSource = ""
+                bookSource = "epub"
             )
         } catch (e: Exception) {
             Timber.e(e, "Error extracting text from EPUB")
@@ -327,7 +327,7 @@ class EBookDataSource @Inject constructor(
         input ?: return@withContext null
         return@withContext try {
             val text = input.bufferedReader().use { it.readText() }
-                .split("\n")//, listOf("This text has been narrated by the Run and Read app.")
+                .split("\n")
             EBookFile(
                 "Unknown Title",
                 "Unknown Author",
@@ -339,7 +339,7 @@ class EBookDataSource @Inject constructor(
                 rate = 1.0f,
                 voice = "",
                 model = "",
-                bookSource = ""
+                bookSource = "clipboard"
             )
         } catch (e: Exception) {
             Timber.e(e, "Error extracting plain text")
@@ -391,8 +391,8 @@ class EBookDataSource @Inject constructor(
                 rate = 1.0f,
                 voice = "",
                 model = "",
-                bookSource = ""
-            )//, "This text has been narrated by the Run and Read app."))
+                bookSource = "clipboard"
+            )
         } else null
     }
 }

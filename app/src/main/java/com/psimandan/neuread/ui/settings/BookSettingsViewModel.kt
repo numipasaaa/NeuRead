@@ -7,17 +7,13 @@ import android.speech.tts.Voice
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.psimandan.neuread.data.datasource.ClonedVoice
 import com.psimandan.neuread.data.datasource.PrefsStore
 import com.psimandan.neuread.data.model.AudioBook
 import com.psimandan.neuread.data.model.Book
-import com.psimandan.neuread.data.model.Bookmark
 import com.psimandan.neuread.data.repository.LibraryRepository
 import com.psimandan.neuread.data.model.EBookFile
 import com.psimandan.neuread.data.model.NeuReadBook
 import com.psimandan.neuread.data.model.TextPart
-import com.psimandan.neuread.voice.NeuTTSApiClient
-import com.psimandan.neuread.voice.NeuReadVoice
 import com.psimandan.neuread.voice.SimpleSpeakingCallBack
 import com.psimandan.neuread.voice.SimpleSpeechProvider
 import com.psimandan.neuread.voice.languageId
@@ -29,7 +25,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.psimandan.neuread.audio.DownloadAudioWorker
-import com.psimandan.neuread.data.repository.PlayerStateRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -41,12 +36,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.util.Locale
 import javax.inject.Inject
 import kotlin.math.min
@@ -74,12 +66,12 @@ class LimitedDictionary(val limit: UInt) {
 class BookSettingsViewModel @Inject constructor(
     @ApplicationContext private val application: Context,
     private val repository: LibraryRepository,
-    private val playerStateRepository: PlayerStateRepository,
     private val prefsStore: PrefsStore
 ) : ViewModel() {
 
     private var textToSpeech: SimpleSpeechProvider? = null
     private var mediaPlayer: MediaPlayer? = null
+    private var audioVoiceChangedSinceLastSave: Boolean = false
     val recentSelectionsL: LimitedDictionary = LimitedDictionary(limit = 5U)
 
     data class BookUIState(
@@ -106,7 +98,9 @@ class BookSettingsViewModel @Inject constructor(
         val showVoiceError: Boolean = false,
         val downloadProgress: Float? = null,
         val dyslexicFontEnabled: Boolean = false,
-        val highlightingEnabled: Boolean = true
+        val highlightingEnabled: Boolean = true,
+        val isEditingText: Boolean = false,
+        val editingText: String = ""
     )
 
     private val _state = MutableStateFlow(BookUIState())
@@ -115,49 +109,72 @@ class BookSettingsViewModel @Inject constructor(
     private val _viewState = MutableStateFlow(SettingsUIState())
     val viewState: StateFlow<SettingsUIState> get() = _viewState.asStateFlow()
 
-    fun payTextSample(language: Locale, voice: Voice?, rate: Float) {
-        voice?.let {
-            if (bookState.value.book is Book) {
-                val sampleText = currentPage().substring(0, min(currentPage().length, 100))
+    init {
+        viewModelScope.launch {
+            repository.libraryChanges.collect {
+                // If the currently displayed book matches an update, refresh it
+                val currentBookId = _state.value.book?.id
+                val updatedSelectedBook = repository.getSelectedBook()
+                if (updatedSelectedBook?.id == currentBookId) {
+                    Timber.d("BookSettingsViewModel: Library change detected for current book, refreshing state")
+                    setUpBook()
+                }
+            }
+        }
+    }
 
-                if (textToSpeech == null) {
-                    textToSpeech = SimpleSpeechProvider(
-                        application,
-                        currentLocale = language,
-                        currentVoice = voice,
-                        speechRate = rate,
-                        speakingCallBack = object : SimpleSpeakingCallBack {
-                            override fun onError(utteranceId: String?, errorCode: Int) {
-                                Timber.d("textToSpeech=>1 onError=>$errorCode")
-                                if (errorCode == TextToSpeech.ERROR_NETWORK_TIMEOUT ||
-                                    errorCode == TextToSpeech.ERROR_NETWORK ||
-                                    errorCode == TextToSpeech.ERROR_SERVICE
-                                ) {
-                                    Timber.e("Network error1, retrying with offline voice...")
-                                    viewModelScope.launch {
-                                        _viewState.emit(_viewState.value.copy(showVoiceError = true))
-                                    }
+    fun playTextSample(language: Locale, voice: Voice?, rate: Float) {
+        voice?.let {
+            // Stop book audio if playing
+            mediaPlayer?.let { mp ->
+                if (mp.isPlaying) mp.stop()
+                mp.release()
+            }
+            mediaPlayer = null
+
+            val sampleText = currentPage().substring(0, min(currentPage().length, 100))
+
+            if (textToSpeech == null) {
+                textToSpeech = SimpleSpeechProvider(
+                    application,
+                    currentLocale = language,
+                    currentVoice = voice,
+                    speechRate = rate,
+                    speakingCallBack = object : SimpleSpeakingCallBack {
+                        override fun onError(utteranceId: String?, errorCode: Int) {
+                            Timber.d("textToSpeech=>1 onError=>$errorCode")
+                            if (errorCode == TextToSpeech.ERROR_NETWORK_TIMEOUT ||
+                                errorCode == TextToSpeech.ERROR_NETWORK ||
+                                errorCode == TextToSpeech.ERROR_SERVICE
+                            ) {
+                                Timber.e("Network error1, retrying with offline voice...")
+                                viewModelScope.launch {
+                                    _viewState.emit(_viewState.value.copy(showVoiceError = true))
                                 }
                             }
-                        },
-                        prefsStore = prefsStore
-                    )
-                }
-                if (textToSpeech?.isSpeaking() == true) {
-                    textToSpeech?.stop()
-                } else {
-                    textToSpeech?.updateLocale(language, voice, rate)
-                    textToSpeech?.speak(sampleText)
-                }
+                        }
+                    },
+                    prefsStore = prefsStore
+                )
+            }
+            if (textToSpeech?.isSpeaking() == true) {
+                textToSpeech?.stop()
+            } else {
+                textToSpeech?.updateLocale(language, voice, rate)
+                textToSpeech?.speak(sampleText)
             }
         } ?: run {
             Toast.makeText(application, "Please select a voice first!", Toast.LENGTH_SHORT).show()
         }
     }
 
-    fun payAudioSample() {
+    fun playAudioSample() {
         if (bookState.value.book is AudioBook) {
             val book = (bookState.value.book as AudioBook)
+            
+            // Stop voice sample if playing
+            textToSpeech?.stop()
+
             if (mediaPlayer == null) {
                 mediaPlayer = MediaPlayer().apply {
                     setDataSource(book.audioFilePath)
@@ -187,8 +204,19 @@ class BookSettingsViewModel @Inject constructor(
     }
 
     fun downloadAudio() {
-        val book = bookState.value.book as? Book ?: return
-        val voiceName = bookState.value.voiceIdentifier
+        val book = bookState.value.book ?: return
+        val voiceName = bookState.value.voiceIdentifier.ifBlank {
+            when (book) {
+                is Book -> book.voiceIdentifier
+                is AudioBook -> book.voice
+            }
+        }
+
+        val textParts = when (book) {
+            is Book -> book.text
+            is AudioBook -> book.parts.map { it.text }
+        }
+        if (textParts.isEmpty()) return
 
         // Immediate UI feedback
         _viewState.update { it.copy(downloadProgress = 0f) }
@@ -245,7 +273,7 @@ class BookSettingsViewModel @Inject constructor(
                         
                         if (latestWork != null) {
                             if (latestWork.state == WorkInfo.State.SUCCEEDED) {
-                                if ((bookState.value.book is Book || bookState.value.book is AudioBook) && _viewState.value.downloadProgress != null) {
+                                if (_viewState.value.downloadProgress != null) {
                                     Timber.d("trackActiveDownload=> download succeeded, refreshing")
                                     _viewState.update { it.copy(downloadProgress = null) }
                                     setUpBook()
@@ -258,8 +286,6 @@ class BookSettingsViewModel @Inject constructor(
                             } else if (latestWork.state == WorkInfo.State.CANCELLED) {
                                 _viewState.update { it.copy(downloadProgress = null) }
                             }
-                        } else {
-                            _viewState.update { it.copy(downloadProgress = null) }
                         }
                     }
                 }
@@ -277,7 +303,7 @@ class BookSettingsViewModel @Inject constructor(
                     if (file.exists()) {
                         file.delete()
                     }
-                    
+
                     val book = Book(
                         id = audioBook.id,
                         title = audioBook.title,
@@ -285,21 +311,15 @@ class BookSettingsViewModel @Inject constructor(
                         language = audioBook.language,
                         voiceIdentifier = "en",
                         voiceRate = audioBook.voiceRate,
-                        text = audioBook.originalText.ifEmpty { audioBook.parts.map { it.text } },
+                        text = audioBook.parts.map { it.text },
                         lastPosition = audioBook.lastPosition,
                         updated = System.currentTimeMillis(),
                         bookmarks = audioBook.bookmarks,
                         chapters = audioBook.chapters
                     )
-                    
+
                     repository.updateBook(book)
-                    
-                    // Update global player state if this book is currently active
-                    val currentBook = playerStateRepository.getCurrentBook().first()
-                    if (currentBook?.id == book.id) {
-                        playerStateRepository.setCurrentBook(book)
-                    }
-                    
+
                     withContext(Dispatchers.Main) {
                         _state.value = _state.value.copy(
                             book = book,
@@ -323,11 +343,12 @@ class BookSettingsViewModel @Inject constructor(
     fun setUpBook() {
         Timber.d("setUpBook=>")
         viewModelScope.launch {
+            audioVoiceChangedSinceLastSave = false
             if (viewState.value.newBook) {
                 Timber.d("setUpBook=>newBook skipping")
                 return@launch
             }
-            _viewState.update { it.copy(loading = true, downloadProgress = null) }
+            _viewState.update { it.copy(loading = true, selectedPage = 0) }
 
             val book = withContext(Dispatchers.IO) {
                 repository.getSelectedBook()
@@ -347,14 +368,6 @@ class BookSettingsViewModel @Inject constructor(
             }
             Timber.d("setUpBook=>voiceRate: ${book?.voiceRate}")
 
-            val currentSpeechRate = try {
-                withContext(Dispatchers.IO) {
-                    playerStateRepository.getSpeechRate().first()
-                }
-            } catch (e: Exception) {
-                null
-            }
-
             if (book is Book) {
                 _state.value = _state.value.copy(
                     book = book,
@@ -362,12 +375,13 @@ class BookSettingsViewModel @Inject constructor(
                     author = book.author,
                     language = book.language,
                     voiceIdentifier = book.voiceIdentifier,
-                    voiceRate = currentSpeechRate ?: book.voiceRate,
+                    voiceRate = book.voiceRate,
                     text = book.text,
                     audioPath = "",
                     parts = emptyList(),
                     voice = "",
-                    model = ""
+                    model = "",
+                    bookSource = book.bookSource
                 )
                 trackActiveDownload(book.id)
             } else if (book is AudioBook) {
@@ -376,15 +390,14 @@ class BookSettingsViewModel @Inject constructor(
                     title = book.title,
                     author = book.author,
                     language = book.language,
-                    voiceIdentifier = book.voice, // Map voice back to identifier
-                    voiceRate = currentSpeechRate ?: book.voiceRate,
+                    voiceIdentifier = book.voice,
+                    voiceRate = book.voiceRate,
                     text = emptyList(),
                     audioPath = book.audioFilePath,
                     parts = book.parts,
                     voice = book.voice,
                     model = book.model
                 )
-                trackActiveDownload(book.id) // Track if it's still being downloaded as a partial
             }
             _viewState.update { it.copy(loading = false) }
             Timber.d("setUpBook=>done")
@@ -448,8 +461,7 @@ class BookSettingsViewModel @Inject constructor(
                     bookSource = ebook.bookSource,
                     updated = System.currentTimeMillis(),
                     bookmarks = mutableListOf(),
-                    chapters = chapters,
-                    originalText = ebook.content
+                    chapters = chapters
                 )
             } else {
                 Book(
@@ -460,6 +472,7 @@ class BookSettingsViewModel @Inject constructor(
                     voiceRate = 1.0f,
                     text = ebook.content,
                     lastPosition = 0,
+                    bookSource = ebook.bookSource,
                     updated = System.currentTimeMillis(),
                     bookmarks = mutableListOf(),
                     chapters = chapters
@@ -470,7 +483,7 @@ class BookSettingsViewModel @Inject constructor(
                 title = ebook.title,
                 author = ebook.author,
                 language = language,
-                voiceIdentifier = "en",
+                voiceIdentifier = if (ebook.audioPath.isNotEmpty()) ebook.voice else "en",
                 voiceRate = 1.0f,
                 text = ebook.content,
                 audioPath = ebook.audioPath,
@@ -484,9 +497,14 @@ class BookSettingsViewModel @Inject constructor(
     }
 
     private fun currentPage(): String {
-        return if (viewState.value.selectedPage <= _state.value.text.size - 1) {
-            _state.value.text[viewState.value.selectedPage]
-        } else "1, 2, 3, 4, 5, 5, 4, 3, 2, 1!"
+        val state = _state.value
+        val selectedPage = viewState.value.selectedPage
+        
+        return when {
+            state.text.isNotEmpty() && selectedPage >= 0 && selectedPage < state.text.size -> state.text[selectedPage]
+            state.parts.isNotEmpty() && selectedPage >= 0 && selectedPage < state.parts.size -> state.parts[selectedPage].text
+            else -> "This is a sample text for voice preview."
+        }
     }
 
 
@@ -497,35 +515,35 @@ class BookSettingsViewModel @Inject constructor(
         language: String? = null,
         voiceIdentifier: String? = null
     ) {
-        _state.value = _state.value.copy(
-            title = title ?: _state.value.title,
-            author = author ?: _state.value.author,
-            voiceRate = voiceRate ?: _state.value.voiceRate,
-            language = language ?: _state.value.language,
-            voiceIdentifier = voiceIdentifier ?: _state.value.voiceIdentifier
-        )
-        voiceRate?.let {
-            playerStateRepository.updateSpeechRate(it)
+        val current = _state.value
+        if (voiceIdentifier != null && current.book is AudioBook && voiceIdentifier != current.book.voice) {
+            audioVoiceChangedSinceLastSave = true
         }
+        val updatedBook = when {
+            voiceIdentifier != null && current.book is AudioBook -> {
+                current.book.copy(voice = voiceIdentifier)
+            }
+
+            else -> current.book
+        }
+
+        _state.value = current.copy(
+            book = updatedBook,
+            title = title ?: current.title,
+            author = author ?: current.author,
+            voiceRate = voiceRate ?: current.voiceRate,
+            language = language ?: current.language,
+            voiceIdentifier = voiceIdentifier ?: current.voiceIdentifier,
+            voice = if (voiceIdentifier != null && current.book is AudioBook) voiceIdentifier else current.voice
+        )
         language?.let {
             recentSelectionsL.push(it)
         }
     }
 
-    fun validateSelectedVoice(availableVoices: List<NeuReadVoice>) {
-        val currentVoiceId = _state.value.voiceIdentifier
-        val currentLang = _state.value.language
-        val stillExists = availableVoices.any { it.name == currentVoiceId && it.language == currentLang }
-        if (!stillExists) {
-            val fallback = availableVoices.firstOrNull { it.language == currentLang } ?: availableVoices.firstOrNull()
-            fallback?.let {
-                updateBookDetails(voiceIdentifier = it.name)
-            }
-        }
-    }
-
     fun onCancel(onNewBook: () -> Unit, onUpdate: () -> Unit) {
         viewModelScope.launch {
+            audioVoiceChangedSinceLastSave = false
             if (_viewState.value.newBook) {
                 _viewState.value = _viewState.value.copy(newBook = false)
                 onNewBook()
@@ -538,6 +556,8 @@ class BookSettingsViewModel @Inject constructor(
     fun onSave(completed: () -> Unit) {
         viewModelScope.launch {
             _viewState.value = _viewState.value.copy(loading = true)
+            var savedBook: NeuReadBook? = null
+            var shouldRegenerateAudio = false
 
             withContext(Dispatchers.IO) {
                 _state.value.book?.let {
@@ -570,15 +590,19 @@ class BookSettingsViewModel @Inject constructor(
                                 voiceIdentifier = bookState.value.voiceIdentifier,
                                 voiceRate = bookState.value.voiceRate,
                                 text = text,
-                                chapters = updatedChapters
+                                chapters = updatedChapters,
+                                bookSource = it.bookSource
                             )
                         }
 
                         is AudioBook -> {
+                            shouldRegenerateAudio = audioVoiceChangedSinceLastSave &&
+                                    bookState.value.voiceIdentifier.isNotBlank()
                             it.copy(
                                 title = bookState.value.title,
                                 author = bookState.value.author,
                                 voiceRate = bookState.value.voiceRate,
+                                voice = bookState.value.voiceIdentifier.ifBlank { it.voice },
                             )
                         }
                     }
@@ -589,12 +613,52 @@ class BookSettingsViewModel @Inject constructor(
                     } else {
                         repository.updateBook(b)
                     }
+                    savedBook = b
                 }
                 prefsStore.saveSelectedLanguages(recentSelectionsL.values)
             }
 
+            savedBook?.let { updated ->
+                _state.value = when (updated) {
+                    is Book -> _state.value.copy(
+                        book = updated,
+                        title = updated.title,
+                        author = updated.author,
+                        language = updated.language,
+                        voiceIdentifier = updated.voiceIdentifier,
+                        voiceRate = updated.voiceRate,
+                        text = updated.text,
+                        audioPath = "",
+                        parts = emptyList(),
+                        voice = "",
+                        model = ""
+                    )
+
+                    is AudioBook -> _state.value.copy(
+                        book = updated,
+                        title = updated.title,
+                        author = updated.author,
+                        language = updated.language,
+                        voiceIdentifier = updated.voice,
+                        voiceRate = updated.voiceRate,
+                        text = emptyList(),
+                        audioPath = updated.audioFilePath,
+                        parts = updated.parts,
+                        voice = updated.voice,
+                        model = updated.model
+                    )
+                }
+            }
+
             completed()
             _viewState.value = _viewState.value.copy(loading = false)
+
+            if (shouldRegenerateAudio) {
+                // Rebuild the downloaded file with the newly selected voice.
+                downloadAudio()
+            }
+            audioVoiceChangedSinceLastSave = false
+
             mediaPlayer?.apply {
                 stop()
                 release()
@@ -608,6 +672,44 @@ class BookSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _viewState.value = _viewState.value.copy(selectedPage = page)
         }
+    }
+
+    fun onOpenTextEditor() {
+        val currentState = _state.value
+        val currentText = if (currentState.bookSource == "clipboard") {
+            currentState.text.joinToString("\n")
+        } else {
+            currentPage()
+        }
+        _viewState.update { it.copy(isEditingText = true, editingText = currentText) }
+    }
+
+    fun onSaveEditedText(newText: String) {
+        val index = _viewState.value.selectedPage
+        val currentState = _state.value
+        
+        if (currentState.bookSource == "clipboard") {
+            val updatedText = newText.split("\n")
+            _state.value = currentState.copy(text = updatedText)
+        } else if (currentState.text.isNotEmpty()) {
+            val updatedText = currentState.text.toMutableList()
+            if (index in updatedText.indices) {
+                updatedText[index] = newText
+                _state.value = currentState.copy(text = updatedText)
+            }
+        } else if (currentState.parts.isNotEmpty()) {
+            val updatedParts = currentState.parts.toMutableList()
+            if (index in updatedParts.indices) {
+                updatedParts[index] = updatedParts[index].copy(text = newText)
+                _state.value = currentState.copy(parts = updatedParts)
+            }
+        }
+        
+        _viewState.update { it.copy(isEditingText = false, editingText = "") }
+    }
+
+    fun onCloseTextEditor() {
+        _viewState.update { it.copy(isEditingText = false, editingText = "") }
     }
 
     fun onShowDelete(show: Boolean) {

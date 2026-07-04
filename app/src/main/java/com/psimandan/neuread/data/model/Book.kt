@@ -34,6 +34,8 @@ data class Book(
     override val voiceRate: Float,
     val text: List<String>,
     override val lastPosition: Int,
+    @SerialName("book_source")
+    val bookSource: String = "",
     @SerialName("created")
     override val updated: Long,
     override val bookmarks: MutableList<Bookmark> = mutableListOf(),

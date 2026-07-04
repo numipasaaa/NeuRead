@@ -44,3 +44,6 @@ replay_pid*
 /docs/proposal.md
 /docs/security_review_report.md
 /wip/
+
+/neutts-main/data
+/neutts-main/*/*/*.wav

@@ -17,7 +17,6 @@ import com.psimandan.neuread.data.model.AudioBook
 import com.psimandan.neuread.data.model.Book
 import com.psimandan.neuread.data.model.TextPart
 import com.psimandan.neuread.data.repository.LibraryRepository
-import com.psimandan.neuread.data.repository.PlayerStateRepository
 import com.psimandan.neuread.voice.NeuTTSApiClient
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -28,14 +27,15 @@ import timber.log.Timber
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.text.BreakIterator
+import java.util.Locale
 
 @HiltWorker
 class DownloadAudioWorker @AssistedInject constructor(
     @Assisted private val context: Context,
     @Assisted workerParams: WorkerParameters,
     private val repository: LibraryRepository,
-    private val prefsStore: PrefsStore,
-    private val playerStateRepository: PlayerStateRepository
+    private val prefsStore: PrefsStore
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -43,7 +43,13 @@ class DownloadAudioWorker @AssistedInject constructor(
         val bookTitle = inputData.getString("bookTitle") ?: "Book"
         val voiceName = inputData.getString("voiceName") ?: "en"
         
-        val book = repository.getBookById(bookId) as? Book ?: return@withContext Result.failure()
+        val book = repository.getBookById(bookId) ?: return@withContext Result.failure()
+        val sourceTexts = when (book) {
+            is Book -> book.text
+            is AudioBook -> book.parts.map { it.text }
+        }
+        if (sourceTexts.isEmpty()) return@withContext Result.failure()
+        val previousAudioPath = (book as? AudioBook)?.audioFilePath
 
         try {
             setForeground(createForegroundInfo(0, bookTitle))
@@ -56,20 +62,72 @@ class DownloadAudioWorker @AssistedInject constructor(
             val currentClonedVoice = clonedVoices.find { it.name == voiceName }
             val apiClient = NeuTTSApiClient(context)
             
-            val allSentences = book.text.flatMap { text ->
-                text.split(Regex("(?<=[.!?])\\s+")).filter { it.isNotBlank() }
+            // 1. Clean and join text parts to avoid splitting in the middle of a sentence
+            // Replace newlines and tabs with spaces to prevent artificial sentence breaks
+            val fullText = sourceTexts.joinToString(" ")
+                .replace("\n", " ")
+                .replace("\r", " ")
+                .replace("\t", " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            
+            // 2. Robust sentence splitting using BreakIterator with correct locale
+            val allSentences = mutableListOf<String>()
+            val locale = try { 
+                val tag = book.language.replace("_", "-")
+                if (tag.isBlank()) Locale.getDefault() else Locale.forLanguageTag(tag)
+            } catch (_: Exception) {
+                Locale.getDefault() 
             }
             
+            Timber.d("[SPLIT] Using locale: ${locale.displayName} for splitting")
+            
+            val iterator = BreakIterator.getSentenceInstance(locale)
+            iterator.setText(fullText)
+            var start = iterator.first()
+            var end = iterator.next()
+            while (end != BreakIterator.DONE) {
+                val sentence = fullText.substring(start, end).trim()
+                if (sentence.isNotBlank()) {
+                    // Sub-split if sentence is too long (> 50 words)
+                    val words = sentence.split(" ")
+                    if (words.size > 50) {
+                        var subStart = 0
+                        while (subStart < words.size) {
+                            val subEnd = minOf(subStart + 45, words.size)
+                            // Try to find a comma or semicolon to split at naturally if possible
+                            var splitAt = subEnd
+                            if (subEnd < words.size) {
+                                for (i in subEnd downTo maxOf(subStart + 10, subEnd - 15)) {
+                                    if (words[i].contains(",") || words[i].contains(";") || words[i].contains(":")) {
+                                        splitAt = i + 1
+                                        break
+                                    }
+                                }
+                            }
+                            allSentences.add(words.subList(subStart, splitAt).joinToString(" "))
+                            subStart = splitAt
+                        }
+                    } else {
+                        allSentences.add(sentence)
+                    }
+                }
+                start = end
+                end = iterator.next()
+            }
+
+            Timber.d("[SPLIT] Total sentences found: ${allSentences.size}")
+
             val audioParts = mutableListOf<TextPart>()
             val tempFiles = mutableListOf<File>()
             var currentTotalTimeMs = 0
             
+            // 3. Group sentences into synthesis chunks (ensure they end with terminal punctuation)
             val chunkSize = 3
             val sentenceChunks = allSentences.chunked(chunkSize)
-            
-            for ((chunkIndex, chunk) in sentenceChunks.withIndex()) {
-                if (isStopped) return@withContext Result.failure()
 
+            for ((chunkIndex, chunk) in sentenceChunks.withIndex()) {
+                Timber.d("[SPLIT] Chunk $chunkIndex: \"${chunk.joinToString(" ").take(100)}...\"")
                 var result: NeuTTSApiClient.SynthesisResult? = null
                 var attempts = 0
                 val maxAttempts = 3
@@ -78,24 +136,16 @@ class DownloadAudioWorker @AssistedInject constructor(
                     attempts++
                     try {
                         result = if (currentClonedVoice != null) {
+                            val clonedLang = if (currentClonedVoice.language.lowercase().startsWith("ro")) "ro" else null
                             apiClient.cloneBatch(
                                 sentences = chunk,
                                 refText = currentClonedVoice.referenceText,
-                                refCodes = currentClonedVoice.codes
+                                refCodes = currentClonedVoice.codes,
+                                language = clonedLang
                             )
                         } else {
-                            val isRomanianVoice = voiceName.contains("Petra", ignoreCase = true)
-                            
-                            val voiceParam = if (isRomanianVoice) {
-                                "petra"
-                            } else {
-                                voiceName.lowercase().split(" ").firstOrNull()
-                            }
-                            
-                            val langParam = if (isRomanianVoice) "ro" else book.language
-
-                            Timber.d("DownloadAudioWorker: voiceParam=$voiceParam, langParam=$langParam")
-                            apiClient.synthesizeBatch(chunk, voiceParam, langParam)
+                            val integratedVoiceName = voiceName.lowercase().split(" ").firstOrNull()
+                            apiClient.synthesizeBatch(chunk, integratedVoiceName)
                         }
                     } catch (e: Exception) {
                         Timber.w(e, "Attempt $attempts failed for chunk $chunkIndex")
@@ -105,10 +155,8 @@ class DownloadAudioWorker @AssistedInject constructor(
                 }
                 
                 if (result != null && result.file.exists()) {
-                    val chunkFile = File(context.filesDir, "chunk_${bookId}_$chunkIndex.wav")
-                    result.file.copyTo(chunkFile, overwrite = true)
-                    tempFiles.add(chunkFile)
-                    
+                    tempFiles.add(result.file)
+
                     val durations = result.durationsMs
                     chunk.forEachIndexed { index, sentence ->
                         audioParts.add(TextPart(currentTotalTimeMs, sentence))
@@ -124,48 +172,29 @@ class DownloadAudioWorker @AssistedInject constructor(
             }
             
             if (tempFiles.isNotEmpty()) {
-                val finalAudioFile = mergeAudioFiles(tempFiles, suffix = "final_${bookId}")
+                val finalAudioFile = mergeAudioFiles(tempFiles)
                 if (finalAudioFile != null) {
-                    // Fetch LATEST book state to get the most recent lastPosition (word index)
-                    val latestBook = repository.getBookById(bookId) as? Book ?: book
-
-                    // Convert TTS word index to seconds for the new AudioBook lastPosition
-                    val wordsForTime = latestBook.text.flatMap { it.split(Regex("\\s+")) }.filter { it.isNotEmpty() }
-                    var totalChars = 0
-                    for (i in 0 until minOf(latestBook.lastPosition, wordsForTime.size)) {
-                        totalChars += wordsForTime[i].length + 1
-                    }
-                    val elapsedSeconds = (totalChars * 0.080) / latestBook.voiceRate
-
                     val audioBook = AudioBook(
-                        id = latestBook.id,
-                        title = latestBook.title,
-                        author = latestBook.author,
-                        language = latestBook.language,
-                        voiceRate = latestBook.voiceRate,
-                        lastPosition = elapsedSeconds.toInt(),
+                        id = book.id,
+                        title = book.title,
+                        author = book.author,
+                        language = book.language,
+                        voiceRate = book.voiceRate,
+                        lastPosition = 0,
                         updated = System.currentTimeMillis(),
-                        bookmarks = latestBook.bookmarks.toMutableList(),
-                        chapters = latestBook.chapters,
+                        bookmarks = book.bookmarks.toMutableList(),
+                        chapters = book.chapters,
                         parts = audioParts,
                         audioFilePath = finalAudioFile.absolutePath,
                         voice = voiceName,
                         model = "NeuTTS",
-                        bookSource = "Cloned",
-                        originalText = latestBook.text
+                        bookSource = "Cloned"
                     )
                     repository.updateBook(audioBook)
-                    
-                    // If the current book being played is this book, update it in the player state
-                    // This will trigger the PlayerViewModel to switch players
-                    val currentBook = playerStateRepository.getCurrentBook().first()
-                    if (currentBook?.id == book.id) {
-                        playerStateRepository.setCurrentBook(audioBook)
+                    previousAudioPath?.takeIf { it.isNotBlank() && it != finalAudioFile.absolutePath }?.let { oldPath ->
+                        runCatching { File(oldPath).delete() }
                     }
-
-                    // Cleanup chunk files
-                    tempFiles.forEach { it.delete() }
-
+                    repository.selectBook(audioBook.id)
                     return@withContext Result.success()
                 }
             }
@@ -182,7 +211,8 @@ class DownloadAudioWorker @AssistedInject constructor(
         return try {
             retriever.setDataSource(file.absolutePath)
             retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
-        } catch (e: Exception) {
+        } catch (_: Exception) {
+            Timber.w("Failed to read audio duration")
             0L
         } finally {
             retriever.release()
@@ -208,7 +238,7 @@ class DownloadAudioWorker @AssistedInject constructor(
         val notification = NotificationCompat.Builder(context, channelId)
             .setContentTitle("Downloading $bookTitle")
             .setContentText("$progress%")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_download)
             .setOngoing(true)
             .setProgress(100, progress, false)
             .setSilent(true)
@@ -223,9 +253,8 @@ class DownloadAudioWorker @AssistedInject constructor(
         return ForegroundInfo(notificationId, notification, type)
     }
 
-    private fun mergeAudioFiles(files: List<File>, suffix: String = ""): File? {
-        val fileName = "audio_book_${suffix}_${System.currentTimeMillis()}.wav"
-        val outputFile = File(context.filesDir, fileName)
+    private fun mergeAudioFiles(files: List<File>): File? {
+        val outputFile = File(context.filesDir, "audio_book_${System.currentTimeMillis()}.wav")
         try {
             var totalDataSize = 0L
             var wavHeader: ByteArray? = null
@@ -244,6 +273,7 @@ class DownloadAudioWorker @AssistedInject constructor(
                             totalDataSize += bytesRead
                         }
                     }
+                    file.delete()
                 }
             }
 

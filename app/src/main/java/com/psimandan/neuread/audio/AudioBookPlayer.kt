@@ -24,7 +24,7 @@ class AudioBookPlayer(
     private var speakingCallback: SpeakingCallBack
 ) : BookPlayer {
     companion object {
-        const val SEEK_STEP_AUDIO = 30
+        const val SEEK_STEP_AUDIO = 10
     }
 
     private var mediaPlayer: ExoPlayer? = null
@@ -372,7 +372,7 @@ class AudioBookPlayer(
                                 currentWordIndexInFrame = currentWordIndexInFrame
                             )
                         )
-                        handler.postDelayed(this, 30) // Update ~33 times per second
+                        handler.postDelayed(this, 30) // Update
                     }
                 }
             }

@@ -63,7 +63,7 @@ fun SplashScreenContent() {
             )
             Spacer(modifier = Modifier.height(normalSpace))
             Text(
-                text = "Read with your ears while on the move!",
+                text = "Enjoy reading on the go!",
                 style = scTypography.headlineSmall,
                 maxLines = 2,
                 color = colorScheme.primary,

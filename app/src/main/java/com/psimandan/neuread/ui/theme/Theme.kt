@@ -6,14 +6,20 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import com.psimandan.neuread.R
+
+import android.app.Activity
 
 val title = Font(R.font.shanti_regular, FontWeight.W600)
 
@@ -150,7 +156,7 @@ private val LightColorScheme = lightColorScheme(
     onSecondary = Color.White,
     surface = Color(0xFFFFFFFF),
     onSurface = Color(0xFF1C1C1C),
-    surfaceVariant = Color(0xFFF0F0F0),
+    surfaceVariant = Color(0xFFEBEBEB),
     onSurfaceVariant = Color(0xFF444444),
     background = Color(0xFFF8F9FA),
     onBackground = Color(0xFF1C1C1C),
@@ -184,6 +190,14 @@ fun NeuReadTheme(
             )
         } else {
             LightColorScheme
+        }
+    }
+
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
 

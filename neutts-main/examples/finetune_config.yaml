@@ -1,0 +1,25 @@
+# run info
+restore_from: "./data/neutts-romanian-finetune/checkpoint-370000" 
+save_root: "./data"
+run_name: "neutts-romanian-finetune"
+
+# model info
+codebook_size: 65536
+max_seq_len: 1024   # Further reduced for 8GB GPUs
+codec_device: "cuda:0"
+lr: 0.00004
+lr_scheduler_type: "cosine"
+warmup_ratio: 0.00
+
+# train info
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 4  # Simulates a larger batch size over multiple backward passes
+max_steps: 500000
+logging_steps: 500
+save_steps: 10000
+seed: 1337
+
+# Duration supervision (optional - set to false to disable)
+# ============================
+enable_duration_supervision: true     # Set to true to enable duration loss during training
+duration_loss_weight: 0.05             # λ: weight of duration loss (0.05-0.5 range)

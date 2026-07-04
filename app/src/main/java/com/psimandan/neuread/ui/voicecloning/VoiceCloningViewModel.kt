@@ -247,6 +247,27 @@ class VoiceCloningViewModel @Inject constructor(
         _isPlaying.value = false
     }
 
+    private fun looksRomanianText(text: String): Boolean {
+        val lower = text.lowercase()
+        // Romanian diacritics are a strong signal that language should be ro_RO.
+        return lower.any { it in "ăâîșşțţ" }
+    }
+
+    private fun normalizeClonedVoiceLanguage(language: String, referenceText: String): String {
+        val normalized = language.trim().lowercase().replace('-', '_')
+        val mapped = when {
+            normalized.startsWith("ro") -> "ro_RO"
+            normalized.startsWith("en") -> "en_US"
+            normalized.startsWith("es") -> "es_ES"
+            normalized.startsWith("de") -> "de_DE"
+            normalized.startsWith("fr") -> "fr_FR"
+            else -> "en_US"
+        }
+
+        // Guardrail: if UI/pipeline accidentally sends en_US for Romanian text, keep it Romanian.
+        return if (mapped == "en_US" && looksRomanianText(referenceText)) "ro_RO" else mapped
+    }
+
     fun uploadVoice(name: String, language: String, referenceText: String) {
         val file = currentOutputFile ?: return
         if (!file.exists()) return
@@ -254,7 +275,8 @@ class VoiceCloningViewModel @Inject constructor(
         viewModelScope.launch {
             _isUploading.value = true
             try {
-                val codes = apiClient.encodeReference(file)
+                val normalizedLanguage = normalizeClonedVoiceLanguage(language, referenceText)
+                val codes = apiClient.encodeReference(file, normalizedLanguage)
                 if (codes != null) {
                     val persistentFile = File(
                         getApplication<Application>().filesDir,
@@ -266,10 +288,12 @@ class VoiceCloningViewModel @Inject constructor(
                         }
                     }
 
+                    Timber.d("Saving cloned voice '${name}' with language=$normalizedLanguage (incoming=$language)")
+
                     val voice = ClonedVoice(
                         id = UUID.randomUUID().toString(),
                         name = name,
-                        language = language,
+                        language = normalizedLanguage,
                         referenceText = referenceText,
                         codes = codes,
                         samplePath = persistentFile.absolutePath
@@ -296,5 +320,3 @@ class VoiceCloningViewModel @Inject constructor(
         stopPlayback()
     }
 }
-
-

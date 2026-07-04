@@ -7,7 +7,7 @@ import com.psimandan.neuread.data.model.EBookFile
 import com.psimandan.neuread.data.model.NeuReadBook
 import com.psimandan.neuread.data.repository.EBookRepository
 import com.psimandan.neuread.data.repository.LibraryRepository
-import com.psimandan.neuread.data.repository.PlayerStateRepository // ADDED
+import com.psimandan.neuread.data.repository.PlayerStateRepository
 import com.psimandan.neuread.domain.usecase.PlayerUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -25,7 +25,7 @@ class LibraryScreenViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val fileRepository: EBookRepository,
     private val playerUseCase: PlayerUseCase,
-    private val playerStateRepository: PlayerStateRepository // ADDED
+    private val playerStateRepository: PlayerStateRepository
 ) : ViewModel() {
 
     private val _libraryBooks = MutableStateFlow<List<NeuReadBook>>(emptyList())

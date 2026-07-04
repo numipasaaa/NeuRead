@@ -82,6 +82,9 @@ class SimpleSpeechProvider(
     }
 
     fun updateLocale(locale: Locale, voice: Voice, rate: Float) {
+        currentLocale = locale
+        currentVoice = voice
+        speechRate = rate
         textToSpeech.language = locale
         textToSpeech.voice = voice
         textToSpeech.setSpeechRate(rate)
@@ -90,6 +93,39 @@ class SimpleSpeechProvider(
     fun speak(text: String) {
         if (currentVoice.isNetworkConnectionRequired) {
             scope.launch {
+                // Check if we are playing a sample (short text) and if we have a local preview
+                val isSample = text.length < 200 // Threshold for sample vs actual book text
+                
+                if (isSample) {
+                    // 1. Check for Cloned Voice local recording
+                    val clonedVoices = prefsStore.getClonedVoices().first()
+                    val currentClonedVoice = clonedVoices.find { it.name == currentVoice.name }
+                    if (currentClonedVoice?.samplePath != null) {
+                        val file = File(currentClonedVoice.samplePath)
+                        if (file.exists()) {
+                            Timber.d("SimpleSpeechProvider: Playing local recording for cloned voice ${currentVoice.name}")
+                            playAudioFile(file, deleteAfter = false)
+                            return@launch
+                        }
+                    }
+
+                    // 2. Check for AI Voice asset sample
+                    val normalizedName = currentVoice.name.replace(" (AI)", "").lowercase()
+                    val assetPath = "voice_samples/$normalizedName.wav"
+                    try {
+                        context.assets.open(assetPath).use {
+                            Timber.d("SimpleSpeechProvider: Playing local asset sample for ${currentVoice.name} from $assetPath")
+                            // We need to copy asset to temp file to use playAudioFile or use a different player
+                            val tempFile = File(context.cacheDir, "temp_sample.wav")
+                            it.copyTo(tempFile.outputStream())
+                            playAudioFile(tempFile)
+                            return@launch
+                        }
+                    } catch (e: Exception) {
+                        Timber.d("SimpleSpeechProvider: Local asset sample not found for ${currentVoice.name} (checked $assetPath)")
+                    }
+                }
+
                 val audioFile = if (!currentVoice.name.contains("NeuTTS", ignoreCase = true)) {
                     val clonedVoices = prefsStore.getClonedVoices().first()
                     val currentClonedVoice = clonedVoices.find { it.name == currentVoice.name }
@@ -100,10 +136,11 @@ class SimpleSpeechProvider(
                             refCodes = currentClonedVoice.codes
                         )?.file
                     } else {
-                        val isRomanianVoice = currentVoice.name.contains("Petra", ignoreCase = true)
+                        val romanianVoices = listOf("Adrian", "Andreea", "Mihaela", "Mihai")
+                        val isRomanianVoice = romanianVoices.any { currentVoice.name.contains(it, ignoreCase = true) }
                         
                         val voiceParam = if (isRomanianVoice) {
-                            "petra"
+                            romanianVoices.find { currentVoice.name.contains(it, ignoreCase = true) }?.lowercase() ?: "adrian"
                         } else {
                             currentVoice.name.lowercase().split(" ").firstOrNull()
                         }
@@ -139,18 +176,18 @@ class SimpleSpeechProvider(
         }
     }
 
-    private fun playAudioFile(file: File) {
+    private fun playAudioFile(file: File, deleteAfter: Boolean = true) {
         try {
             mediaPlayer?.release()
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(file.absolutePath)
                 setOnCompletionListener {
-                    file.delete()
+                    if (deleteAfter) file.delete()
                 }
                 setOnErrorListener { _, what, extra ->
                     Timber.e("MediaPlayer error: $what, $extra")
                     speakingCallBack?.onError(null, what)
-                    file.delete()
+                    if (deleteAfter) file.delete()
                     true
                 }
                 prepare()

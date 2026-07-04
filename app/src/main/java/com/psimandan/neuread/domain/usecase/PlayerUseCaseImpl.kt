@@ -2,7 +2,6 @@ package com.psimandan.neuread.domain.usecase
 
 import com.psimandan.neuread.BookPlayer
 import com.psimandan.neuread.PlaybackSource
-import com.psimandan.neuread.data.repository.LibraryRepository
 import com.psimandan.neuread.data.repository.PlaybackState
 import com.psimandan.neuread.data.repository.PlayerStateRepository
 import kotlinx.coroutines.flow.Flow
@@ -13,7 +12,6 @@ import javax.inject.Singleton
 @Singleton
 class PlayerUseCaseImpl @Inject constructor(
     private val playerStateRepository: PlayerStateRepository,
-    private val libraryRepository: LibraryRepository
 ) : PlayerUseCase {
     
     private var bookPlayer: BookPlayer? = null

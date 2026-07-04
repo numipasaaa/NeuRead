@@ -8,8 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,9 +29,9 @@ import com.psimandan.neuread.voice.toLocale
 fun BookItemView(
     item: NeuReadBook,
     downloadProgress: Float?,
-    isCurrentlyPlaying: Boolean = false, // ADDED
-    isPlaying: Boolean = false, // ADDED
-    realTimeProgress: String? = null, // ADDED
+    isCurrentlyPlaying: Boolean = false,
+    isPlaying: Boolean = false,
+    realTimeProgress: String? = null,
     onSelect: () -> Unit
 ) {
     val uiState by item.viewState.collectAsState()
@@ -56,21 +56,21 @@ fun BookItemView(
         ),
         // Add a colored border if active
         border = if (isCurrentlyPlaying) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)) else null,
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isCurrentlyPlaying) 8.dp else 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {
-            // NEW: "Currently Playing" / "Last Played" Badge
+            // "Currently Playing" / "Last Played" Badge
             if (isCurrentlyPlaying) {
                 Row(
                     modifier = Modifier.padding(bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = if (isPlaying) Icons.Filled.VolumeUp else Icons.Filled.PlayArrow,
+                        imageVector = if (isPlaying) Icons.AutoMirrored.Filled.VolumeUp else Icons.Filled.PlayArrow,
                         contentDescription = "Playing Status",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(16.dp)

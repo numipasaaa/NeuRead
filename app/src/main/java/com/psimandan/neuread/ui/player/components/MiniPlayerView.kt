@@ -27,8 +27,8 @@ fun MiniPlayerView(
     book: NeuReadBook?,
     uiState: PlayerViewModel.PlayerUIState,
     onPlayPauseClick: () -> Unit,
-    onRewindClick: () -> Unit, // Added handler for rewind
-    onForwardClick: () -> Unit, // Added handler for fast forward
+    onRewindClick: () -> Unit,
+    onForwardClick: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
