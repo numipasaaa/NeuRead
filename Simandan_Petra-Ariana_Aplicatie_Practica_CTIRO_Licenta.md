@@ -132,7 +132,6 @@ docker build -f neutts-main/Dockerfile.gpu -t neutts-server:gpu .
 3. Activează USB Debugging: Settings → Developer Options → USB Debugging
 4. Modifică adresa IP din app/src/main/java/com/psimandan/neuread/voice/NeuTTSApiClient.kt 
 5. În Android Studio: Run → Run 'app' 
-6. Selectează dispozitivul din dialog 
 7. APK-ul se va instala și lansa automat
 
 
