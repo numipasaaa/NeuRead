@@ -37,7 +37,7 @@ NeuRead este o aplicație Android care convertește textul în vorbire folosind 
 
 1. Clonează depozitul:
    ```
-   git clone https://github.com/numipasaaa/NeuRead.git
+   git clone https://github.com/psimandan/NeuRead.git
    ```
 
 2. Deschide proiectul în Android Studio
